@@ -34,6 +34,9 @@ echo "  BUSYBOX Injecting multicall → /bin/busybox + hardlink applets..."
 $INJECT "$DISK" "$BUSYBOX_BIN" bin/busybox
 
 paths=("/bin/busybox")
+# These applets get shell wrappers (not hardlinks): bare BusyBox halt/poweroff/
+# reboot without -f only kill(1, SIG*) and expect SysV init — runit has none.
+FORCE_REBOOT_APPLETS="halt poweroff reboot"
 while IFS= read -r line || [[ -n "$line" ]]; do
 	applet="${line%%#*}"
 	applet="$(echo "$applet" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')"
@@ -41,9 +44,23 @@ while IFS= read -r line || [[ -n "$line" ]]; do
 	if [[ "$applet" == "busybox" ]]; then
 		continue
 	fi
+	case " $FORCE_REBOOT_APPLETS " in
+	*" $applet "*) continue ;;
+	esac
 	$INJECT --hardlink "$DISK" bin/busybox "bin/$applet"
 	paths+=("/bin/$applet")
 done < "$MANIFEST"
+
+FORCE_POWER_BIN="${ROOT}/out/stage-bin/ir0_force_power"
+if [[ ! -f "$FORCE_POWER_BIN" ]]; then
+	echo "✗ missing $FORCE_POWER_BIN (run: scripts/build-services.sh)" >&2
+	exit 1
+fi
+# One ELF, three names: argv[0] selects halt / poweroff / reboot.
+$INJECT --mode 0755 "$DISK" "$FORCE_POWER_BIN" bin/poweroff
+$INJECT --hardlink "$DISK" bin/poweroff bin/halt
+$INJECT --hardlink "$DISK" bin/poweroff bin/reboot
+paths+=("/bin/poweroff" "/bin/halt" "/bin/reboot")
 
 python3 "${IR0_ROOT}/scripts/verify_minix_rootfs.py" --gate "$DISK" "${paths[@]}"
 echo "✓ busybox_inject_manifest OK (${#paths[@]} paths verified)"

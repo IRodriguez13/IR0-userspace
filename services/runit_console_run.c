@@ -162,6 +162,12 @@ static int start_session(const struct ir0_account *acct)
 	}
 
 	/*
+	 * Password entry may leave ECHO off if restore failed. Ash then looks
+	 * dead (no echo, lines never finish). Force cooked+echo before exec.
+	 */
+	(void)ir0_tty_restore_cooked();
+
+	/*
 	 * argv[0] starts with '-' so ash treats this as a login shell and reads
 	 * /etc/profile, which owns PS1 (no hardcoded prompt here).
 	 */

@@ -16,17 +16,70 @@
 
 #include "ir0_auth.h"
 
+#include <errno.h>
 #include <fcntl.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <sys/file.h>
+#include <sys/ioctl.h>
 #include <sys/stat.h>
+#include <sys/syscall.h>
 #include <termios.h>
 #include <unistd.h>
 
 /* musl provides crypt(3) in libc; some sysroots ship no <crypt.h>. */
 extern char *crypt(const char *key, const char *salt);
+
+/*
+ * Kernel TCGETS/TCSETS use the Linux uapi termios (NCCS=19 → 36 bytes).
+ * musl's struct termios is larger (NCCS=32); tcsetattr() can corrupt
+ * c_lflag/ICANON on IR0 and leave Password: unable to accept keys.
+ */
+#define IR0_TCGETS 0x5401u
+#define IR0_TCSETS 0x5402u
+#define IR0_IFLAG_ICRNL  0x00000400u
+#define IR0_LFLAG_ICANON 0x00000002u
+#define IR0_LFLAG_ECHO   0x00000008u
+#define IR0_LFLAG_ECHOE  0x00000010u
+#define IR0_LFLAG_ECHOK  0x00000020u
+
+struct ir0_ktios
+{
+	unsigned int c_iflag;
+	unsigned int c_oflag;
+	unsigned int c_cflag;
+	unsigned int c_lflag;
+	unsigned char c_line;
+	unsigned char c_cc[19];
+};
+
+static int ir0_tty_set_echo(int enable)
+{
+	struct ir0_ktios t;
+
+	memset(&t, 0, sizeof(t));
+	if (syscall(SYS_ioctl, 0, IR0_TCGETS, &t) != 0)
+		return -1;
+	/*
+	 * QEMU/PS2 Enter is CR. Without ICRNL, canon never sees '\\n' and
+	 * Password: hangs forever. Force line discipline bits after TCGETS
+	 * (do not trust a zeroed/partial iflag from a bad get).
+	 */
+	t.c_iflag |= IR0_IFLAG_ICRNL;
+	t.c_lflag |= IR0_LFLAG_ICANON;
+	if (enable)
+		t.c_lflag |= (IR0_LFLAG_ECHO | IR0_LFLAG_ECHOE | IR0_LFLAG_ECHOK);
+	else
+		t.c_lflag &= ~(IR0_LFLAG_ECHO | IR0_LFLAG_ECHOE | IR0_LFLAG_ECHOK);
+	return syscall(SYS_ioctl, 0, IR0_TCSETS, &t) == 0 ? 0 : -1;
+}
+
+/* Public: restore cooked+echo before exec'ing the login shell. */
+int ir0_tty_restore_cooked(void)
+{
+	return ir0_tty_set_echo(1);
+}
 
 #define SALT_CHARS "./0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz"
 #define SALT_LEN 16
@@ -468,53 +521,37 @@ int ir0_user_in_group(const char *user, const char *group)
 
 int ir0_read_line(char *buf, size_t buflen, int echo)
 {
-	struct termios saved;
 	int restore = 0;
-	size_t n = 0;
+	ssize_t r;
+	size_t n;
 
-	if (!buf || buflen == 0)
+	if (!buf || buflen < 2)
 		return -1;
 	buf[0] = '\0';
 
-	if (!echo && tcgetattr(0, &saved) == 0)
-	{
-		struct termios quiet = saved;
+	/*
+	 * One canonical read() for the whole line (not read(1) loops).
+	 * Password: silence echo via kernel-sized TCSETS (see ir0_tty_set_echo).
+	 */
+	if (!echo)
+		restore = ir0_tty_set_echo(0) == 0;
 
-		quiet.c_lflag &= ~(tcflag_t)(ECHO | ECHOE | ECHOK);
-		restore = tcsetattr(0, TCSANOW, &quiet) == 0;
+	r = read(0, buf, buflen - 1);
+	if (r < 0)
+	{
+		buf[0] = '\0';
+		if (restore)
+			(void)ir0_tty_set_echo(1);
+		return -1;
 	}
 
-	while (n + 1 < buflen)
-	{
-		char c;
-		ssize_t r = read(0, &c, 1);
-
-		if (r <= 0)
-			break;
-		if (c == '\n' || c == '\r')
-		{
-			if (echo)
-				(void)write(1, "\n", 1);
-			break;
-		}
-		if (c == 0x7f || c == '\b')
-		{
-			if (n > 0)
-			{
-				n--;
-				if (echo)
-					(void)write(1, "\b \b", 3);
-			}
-			continue;
-		}
-		buf[n++] = c;
-		if (echo)
-			(void)write(1, &c, 1);
-	}
+	n = (size_t)r;
+	while (n > 0 && (buf[n - 1] == '\n' || buf[n - 1] == '\r'))
+		n--;
 	buf[n] = '\0';
 
 	if (restore)
-		(void)tcsetattr(0, TCSANOW, &saved);
+		(void)ir0_tty_set_echo(1);
 	return 0;
 }
 

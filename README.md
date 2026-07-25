@@ -4,9 +4,21 @@ The Unix userland of IR0/Unix: PID 1 (runit), console getty and login, BusyBox,
 OpenDoas, firstboot, recovery and the `/etc` overlays that turn the kernel's
 mechanisms into a usable system.
 
-The kernel lives in the sibling repository [`IR0`](../IR0). Nothing here is
-compiled into the kernel: if PID 1 can replace it without recompiling the
-kernel, it belongs in this repository.
+The kernel lives in the sibling repository
+[`IR0`](https://github.com/IRodriguez13/IR0). Clone both side by side:
+
+```bash
+git clone https://github.com/IRodriguez13/IR0.git
+git clone https://github.com/IRodriguez13/IR0-userspace.git
+export IR0_ROOT=$PWD/IR0
+export IR0_USERSPACE_ROOT=$PWD/IR0-userspace   # optional if sibling of IR0
+```
+
+Nothing here is compiled into the kernel: if PID 1 can replace it without
+recompiling the kernel, it belongs in this repository.
+
+Also see `IR0/Documentation/USERSPACE.md` and
+`IR0-desktop/Documentation/TREE_CONTRACT.md` for the three-tree boundary.
 
 ## Layout
 

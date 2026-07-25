@@ -7,3 +7,4 @@ packages/*/dist/
 *.stamp
 *.o
 tests/host/userspace_tests
+packages/*/prefix/

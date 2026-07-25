@@ -47,6 +47,7 @@ cc_simple runit_power_run runit_power_run.c
 cc_simple runit_busybox_halt_smoke runit_busybox_halt_smoke.c
 cc_simple runit_busybox_poweroff_smoke runit_busybox_poweroff_smoke.c
 cc_simple runit_busybox_reboot_smoke runit_busybox_reboot_smoke.c
+cc_simple ir0_force_power ir0_force_power.c
 cc_simple runit_hostshare_payload_run runit_hostshare_payload_run.c
 cc_simple runit_pause_run runit_pause_run.c
 

@@ -19,7 +19,7 @@ DISK     ?= $(CURDIR)/out/disk.img
 DISK_MB  ?= 200
 PROFILE  ?= development
 
-PACKAGES  = busybox runit opendoas
+PACKAGES  = busybox runit opendoas ncurses nano
 OUT       = $(CURDIR)/out
 SYSROOT   = $(CURDIR)/sysroot
 

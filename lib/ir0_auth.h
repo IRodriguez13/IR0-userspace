@@ -83,6 +83,7 @@ int ir0_user_in_group(const char *user, const char *group);
 
 /* Read a line from stdin; @echo 0 also silences the tty (password prompts). */
 int ir0_read_line(char *buf, size_t buflen, int echo);
+int ir0_tty_restore_cooked(void);
 
 /* Overwrite a buffer holding secrets before it goes out of scope. */
 void ir0_wipe(void *buf, size_t len);
