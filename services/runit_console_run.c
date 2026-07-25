@@ -152,6 +152,11 @@ static int start_session(const struct ir0_account *acct)
 	(void)setenv("SHELL", acct->shell, 1);
 	(void)setenv("PATH", "/bin:/sbin:/usr/bin:/usr/sbin", 1);
 	(void)setenv("HOSTNAME", host, 1);
+	/*
+	 * ncurses/nano are built with linux/vt100/xterm fallbacks only.
+	 * Unset TERM defaults to vt220 inside ncurses → "Error opening terminal".
+	 */
+	(void)setenv("TERM", "linux", 1);
 
 	{
 		char tag[64];

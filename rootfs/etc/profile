@@ -2,6 +2,8 @@
 # The product BusyBox has no id(1) nor hostname(1), so identity comes from the
 # environment exported by the console login.
 export PATH=/bin:/sbin:/usr/bin:/usr/sbin
+# Match ncurses fallbacks (linux/vt100/xterm). Avoid bare vt220.
+export TERM="${TERM:-linux}"
 USER="${USER:-root}"
 HOSTNAME="${HOSTNAME:-ir0}"
 case "$USER" in
