@@ -71,6 +71,11 @@ if [ -f "$STAGE_BIN/doas" ]; then
 	$INJECT "$DISK" --mode 0440 \
 		"${ROOT}/rootfs/etc/doas.conf" etc/doas.conf
 fi
+# Desktop editor (static musl + ncurses); optional until `make build-nano`.
+if [ -f "$STAGE_BIN/nano" ]; then
+	$INJECT "$DISK" "$STAGE_BIN/nano" usr/bin/nano
+	echo "  RUNIT   Injected /usr/bin/nano"
+fi
 # Reduced BusyBox: only login/su. Never share the setuid bit with /bin/busybox.
 $INJECT "$DISK" --setuid "$BUSYBOX_AUTH" usr/bin/busybox-auth
 $INJECT --hardlink "$DISK" usr/bin/busybox-auth bin/login
@@ -133,12 +138,17 @@ $INJECT "$DISK" --mode 0644 --owner 1000:100 \
 	"${ROOT}/rootfs/home/ivan/.keep" home/ivan/.keep
 $INJECT --owner 1000:100 --mode 0700 --chown "$DISK" home/ivan
 
+VERIFY_EXTRA=()
+if [ -f "$STAGE_BIN/nano" ]; then
+	VERIFY_EXTRA+=(/usr/bin/nano)
+fi
 python3 "${IR0_ROOT}/scripts/verify_minix_rootfs.py" --gate "$DISK" \
 	/sbin/init /sbin/runit /bin/runsvdir /bin/sh /bin/busybox \
 	/sbin/fsck.ir0 /sbin/ir0-firstboot /sbin/ir0-recovery /sbin/mount-root-rw /bin/passwd \
 	/usr/bin/busybox-auth /bin/login /bin/su \
 	/etc/passwd /etc/shadow /etc/group \
 	/etc/runit/1 /etc/runit/2 /etc/runit/3 \
-	/etc/runit/sv/console/run /etc/runit/sv/logger/run
+	/etc/runit/sv/console/run /etc/runit/sv/logger/run \
+	"${VERIFY_EXTRA[@]}"
 
 echo "✓ runit rootfs installed on $DISK"
