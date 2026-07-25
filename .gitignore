@@ -1,0 +1,9 @@
+# Build output and imported artifacts — never versioned.
+/out/
+/sysroot/
+packages/*/src/
+packages/*/dist/
+*.img
+*.stamp
+*.o
+tests/host/userspace_tests

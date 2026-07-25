@@ -1,0 +1,17 @@
+# IR0/Unix login profile — read by ash when started as a login shell.
+# The product BusyBox has no id(1) nor hostname(1), so identity comes from the
+# environment exported by the console login.
+export PATH=/bin:/sbin:/usr/bin:/usr/sbin
+USER="${USER:-root}"
+HOSTNAME="${HOSTNAME:-ir0}"
+case "$USER" in
+root)
+	# $PWD stays unexpanded: ash re-expands PS1 on every prompt
+	# (CONFIG_ASH_EXPAND_PRMT).
+	PS1="root@$HOSTNAME"':$PWD# '
+	;;
+*)
+	PS1="$USER@$HOSTNAME"':$PWD$ '
+	;;
+esac
+export PS1 HOSTNAME USER

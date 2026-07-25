@@ -1,0 +1,18 @@
+# Appliance profile — minimal console without interactive login applets.
+# Only applets that are supported and needed for bring-up / recovery shell.
+
+ash
+sh
+echo
+cat
+ls
+pwd
+mkdir
+rm
+cp
+mv
+sync
+true
+false
+uname
+sleep
