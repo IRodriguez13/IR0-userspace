@@ -1,0 +1,7 @@
+# Paths relative to rootfs that may be setuid-root.
+# login/su are hardlinks of busybox-auth (same inode / setuid bit).
+/bin/passwd
+/usr/bin/busybox-auth
+/bin/login
+/bin/su
+/usr/bin/doas

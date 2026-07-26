@@ -1,0 +1,34 @@
+# Desktop profile — only applets validated as "supported" by a gate.
+# Refined after `make busybox-matrix`; must stay ⊆ bb_status.tsv supported.
+
+ash
+sh
+halt
+reboot
+poweroff
+sync
+echo
+cat
+ls
+pwd
+mkdir
+rmdir
+rm
+cp
+mv
+touch
+ln
+stat
+chmod
+basename
+dirname
+true
+false
+uname
+test
+printf
+env
+sleep
+clear
+which
+id
