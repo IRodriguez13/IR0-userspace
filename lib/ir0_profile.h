@@ -7,9 +7,7 @@
  * See the LICENSE file in the project root for full license information.
  *
  * File: ir0_profile.h
- * Description: Product profile (/etc/ir0-profile) shared by firstboot and the
- * console service: development (root autologin lab), desktop (getty + login),
- * appliance (services only, no interactive login).
+ * Description: Product profile (/etc/ir0-profile) shared by firstboot and console.
  */
 
 /* SPDX-License-Identifier: GPL-3.0-only */
@@ -23,7 +21,8 @@
 
 enum ir0_product_profile
 {
-	PROFILE_DEVELOPMENT = 0,
+	PROFILE_MINIMAL = 0,
+	PROFILE_DEVELOPMENT,
 	PROFILE_DESKTOP,
 	PROFILE_APPLIANCE
 };
@@ -35,16 +34,20 @@ static inline enum ir0_product_profile ir0_read_profile(void)
 
 	f = fopen(IR0_PROFILE_FILE, "r");
 	if (!f)
-		return PROFILE_DESKTOP;
+		return PROFILE_MINIMAL;
 	if (!fgets(line, sizeof(line), f))
 	{
 		fclose(f);
-		return PROFILE_DESKTOP;
+		return PROFILE_MINIMAL;
 	}
 	fclose(f);
 	if (strncmp(line, "development", 11) == 0)
 		return PROFILE_DEVELOPMENT;
 	if (strncmp(line, "appliance", 9) == 0)
 		return PROFILE_APPLIANCE;
-	return PROFILE_DESKTOP;
+	if (strncmp(line, "desktop", 7) == 0)
+		return PROFILE_DESKTOP;
+	if (strncmp(line, "minimal", 7) == 0)
+		return PROFILE_MINIMAL;
+	return PROFILE_MINIMAL;
 }

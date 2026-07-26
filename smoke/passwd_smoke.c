@@ -22,7 +22,7 @@
 
 #include "../lib/ir0_auth.h"
 
-#define TEST_USER "ivan"
+#define TEST_USER "labuser"
 #define TEST_UID 1000
 #define TEST_GID 100
 #define OLD_PW "oldpass"

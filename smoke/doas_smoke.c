@@ -23,10 +23,10 @@
 
 #include "../lib/ir0_auth.h"
 
-#define TEST_USER "ivan"
+#define TEST_USER "labuser"
 #define TEST_UID 1000
 #define TEST_GID 100
-#define TEST_PW "ivan"
+#define TEST_PW "labuser"
 #define BAD_PW "wrongpass"
 
 static void out(const char *s)
@@ -91,8 +91,8 @@ static int run_doas(char *const argv[], const char *script, char *capture,
 			_exit(93);
 
 		envp[0] = "PATH=/bin:/sbin:/usr/bin:/usr/sbin";
-		envp[1] = "HOME=/home/ivan";
-		envp[2] = "USER=ivan";
+		envp[1] = "HOME=/home/labuser";
+		envp[2] = "USER=labuser";
 		envp[3] = NULL;
 		execve("/usr/bin/doas", argv, envp);
 		_exit(94);
