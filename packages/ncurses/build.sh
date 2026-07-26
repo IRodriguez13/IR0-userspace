@@ -5,15 +5,11 @@
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
+# shellcheck disable=SC1091
+source "${ROOT}/scripts/toolchain.sh"
 PKG="${ROOT}/packages/ncurses"
 SRC="${PKG}/src"
-PREFIX="${PKG}/prefix"
-CC="${MUSL_CC:-$(command -v x86_64-linux-musl-gcc 2>/dev/null || command -v musl-gcc 2>/dev/null || true)}"
-
-if [ -z "$CC" ]; then
-	echo "✗ musl cross compiler not found (set MUSL_CC=...)" >&2
-	exit 1
-fi
+PREFIX="${PKG}/prefix/${ARCH}"
 if [ ! -d "$SRC" ]; then
 	echo "✗ missing ncurses source; run: make fetch" >&2
 	exit 1
@@ -32,7 +28,7 @@ make distclean >/dev/null 2>&1 || true
 CC="$CC" CFLAGS="-Os -fno-pie" LDFLAGS="-static -no-pie" \
 	./configure \
 	--prefix=/usr \
-	--host=x86_64-linux-musl \
+	--host="${TARGET_TRIPLE}" \
 	--with-build-cc=gcc \
 	--without-shared \
 	--with-normal \
@@ -47,7 +43,7 @@ CC="$CC" CFLAGS="-Os -fno-pie" LDFLAGS="-static -no-pie" \
 	--with-fallbacks=linux,vt100,xterm \
 	--disable-widec \
 	--enable-termcap \
-	>/tmp/ir0-ncurses-configure.log
+	>"${PKG}/configure-${ARCH}.log"
 
 echo "  NCURSES Building..."
 make -s -j"$(nproc)"

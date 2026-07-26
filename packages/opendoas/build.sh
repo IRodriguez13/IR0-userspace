@@ -1,23 +1,15 @@
 #!/usr/bin/env bash
 # SPDX-License-Identifier: GPL-3.0-only
-# Build OpenDoas portable (static musl) for IR0 userspace.
-#
-# Upstream: https://github.com/Duncaen/OpenDoas
-# Auth: shadow(5); persist: --with-timestamp → /run/doas tickets (needs
-# /proc/[pid]/stat, getsid(2) and futimens(2) on the kernel side).
-
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
+# shellcheck disable=SC1091
+source "${ROOT}/scripts/toolchain.sh"
 PKG="${ROOT}/packages/opendoas"
 SRC="${PKG}/src"
-OUT_DIR="${ROOT}/out/stage-bin"
-CC="${MUSL_CC:-$(command -v x86_64-linux-musl-gcc 2>/dev/null || command -v musl-gcc 2>/dev/null || true)}"
+OUT_DIR="${PRODUCT_OUT:-${ROOT}/out/${ARCH}/product}/stage-bin"
+LOG="${PKG}/configure-${ARCH}.log"
 
-if [ -z "$CC" ]; then
-	echo "✗ musl cross compiler not found (set MUSL_CC=...)" >&2
-	exit 1
-fi
 if [ ! -d "$SRC" ]; then
 	echo "✗ missing OpenDoas source; run: make fetch" >&2
 	exit 1
@@ -26,16 +18,16 @@ fi
 mkdir -p "$OUT_DIR"
 cd "$SRC"
 
-echo "  DOAS    Configuring OpenDoas $(cat "$PKG/version") (shadow + timestamp, static)..."
-# musl provides crypt(3) in libc — do not ask the linker for -lcrypt.
+echo "  DOAS    Configuring OpenDoas $(cat "$PKG/version") host=${TARGET_TRIPLE}..."
+# Do not pass --host: OpenDoas's configure probes the build CC directly;
+# TARGET_TRIPLE is already encoded in $CC from scripts/toolchain.sh.
 CC="$CC" CFLAGS="-static -Os -fno-pie" LDFLAGS="-static -no-pie" \
 	./configure --prefix=/usr --sysconfdir=/etc \
-	--without-pam --with-timestamp --enable-static >/tmp/ir0-opendoas-configure.log
+	--without-pam --with-timestamp --enable-static >"$LOG"
 if grep -q -- '-lcrypt' config.mk; then
 	sed -i 's/LDLIBS +=	-lcrypt/LDLIBS +=/' config.mk
 fi
 
-echo "  DOAS    Building..."
 make clean >/dev/null 2>&1 || true
 make -s CC="$CC" CFLAGS="-static -Os -fno-pie" LDFLAGS="-static -no-pie"
 install -m 0755 doas "$OUT_DIR/doas"

@@ -5,16 +5,12 @@
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
+# shellcheck disable=SC1091
+source "${ROOT}/scripts/toolchain.sh"
 PKG="${ROOT}/packages/nano"
 SRC="${PKG}/src"
-NCURSES_PREFIX="${ROOT}/packages/ncurses/prefix"
-OUT_DIR="${ROOT}/out/stage-bin"
-CC="${MUSL_CC:-$(command -v x86_64-linux-musl-gcc 2>/dev/null || command -v musl-gcc 2>/dev/null || true)}"
-
-if [ -z "$CC" ]; then
-	echo "✗ musl cross compiler not found (set MUSL_CC=...)" >&2
-	exit 1
-fi
+NCURSES_PREFIX="${ROOT}/packages/ncurses/prefix/${ARCH}"
+OUT_DIR="${PRODUCT_OUT}/stage-bin"
 if [ ! -d "$SRC" ]; then
 	echo "✗ missing nano source; run: make fetch" >&2
 	exit 1
@@ -56,13 +52,13 @@ CPPFLAGS="$NANO_CPPFLAGS" \
 LDFLAGS="$NANO_LDFLAGS" \
 LIBS="-lncurses" \
 	./configure \
-	--host=x86_64-linux-musl \
+	--host="${TARGET_TRIPLE}" \
 	--prefix=/usr \
 	--enable-tiny \
 	--disable-nls \
 	--disable-libmagic \
 	--enable-utf8=no \
-	>/tmp/ir0-nano-configure.log
+	>"${PKG}/configure-${ARCH}.log"
 
 echo "  NANO    Building lib + src..."
 make -s -j"$(nproc)" -C lib \

@@ -1,30 +1,21 @@
 #!/usr/bin/env bash
 # SPDX-License-Identifier: GPL-3.0-only
-# Build static runit tools (PID 1 + supervision) for IR0 userspace.
-#
-# Source: https://smarden.org/runit/
-# Void template reference: void-packages srcpkgs/runit/template
-
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
+# shellcheck disable=SC1091
+source "${ROOT}/scripts/toolchain.sh"
 PKG="${ROOT}/packages/runit"
 SRC_DIR="${PKG}/src"
-OUT_DIR="${ROOT}/out/bin"
-CC="${MUSL_CC:-$(command -v x86_64-linux-musl-gcc 2>/dev/null || command -v musl-gcc 2>/dev/null || true)}"
+OUT_DIR="${PRODUCT_OUT:-${ROOT}/out/${ARCH}/product}/bin"
 
-if [ -z "$CC" ]; then
-	echo "✗ musl cross compiler not found (set MUSL_CC=...)" >&2
-	exit 1
-fi
 if [ ! -d "$SRC_DIR/src" ]; then
 	echo "✗ missing runit source; run: make fetch" >&2
 	exit 1
 fi
 
 mkdir -p "$OUT_DIR"
-
-echo "  RUNIT   Building with $CC (static)..."
+echo "  RUNIT   Building with $CC (static) ARCH=${ARCH}..."
 cd "$SRC_DIR/src"
 
 echo "$CC -D_GNU_SOURCE -static -Os -fno-pie" >conf-cc

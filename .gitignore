@@ -3,8 +3,12 @@
 /sysroot/
 packages/*/src/
 packages/*/dist/
+packages/*/build-*/
+packages/*/.build-*.lock
+packages/*/configure-*.log
 *.img
 *.stamp
 *.o
 tests/host/userspace_tests
 packages/*/prefix/
+rootfs/local/
