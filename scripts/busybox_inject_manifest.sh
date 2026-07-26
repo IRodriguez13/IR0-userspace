@@ -51,9 +51,21 @@ while IFS= read -r line || [[ -n "$line" ]]; do
 	paths+=("/bin/$applet")
 done < "$MANIFEST"
 
-FORCE_POWER_BIN="${ROOT}/out/stage-bin/ir0_force_power"
+FORCE_POWER_BIN="${IR0_FORCE_POWER_BIN:-}"
+if [[ -z "$FORCE_POWER_BIN" ]]; then
+	for cand in \
+		"${PRODUCT_OUT:-${ROOT}/out/${ARCH:-x86_64}/product}/stage-bin/ir0_force_power" \
+		"${ROOT}/out/${ARCH:-x86_64}/product/stage-bin/ir0_force_power" \
+		"${ROOT}/out/stage-bin/ir0_force_power"
+	do
+		if [[ -f "$cand" ]]; then
+			FORCE_POWER_BIN="$cand"
+			break
+		fi
+	done
+fi
 if [[ ! -f "$FORCE_POWER_BIN" ]]; then
-	echo "✗ missing $FORCE_POWER_BIN (run: scripts/build-services.sh)" >&2
+	echo "✗ missing ir0_force_power (run: make build-services)" >&2
 	exit 1
 fi
 # One ELF, three names: argv[0] selects halt / poweroff / reboot.

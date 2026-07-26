@@ -1,69 +1,148 @@
 # SPDX-License-Identifier: GPL-3.0-only
 #
-# IR0-userspace — the Unix userland that runs on top of the IR0 kernel.
+# IR0-userspace — declarative builder for the canonical IR0/Unix distro.
 #
-#   make fetch     download + checksum upstream sources (network)
-#   make headers   import kernel UAPI into sysroot/ (needs IR0_ROOT)
-#   make build     build packages and services (offline after fetch)
-#   make rootfs    install the rootfs into a MINIX disk image
-#   make image     rootfs + bootable kernel ISO from the kernel tree
+#   make fetch
+#   make headers                 # IR0_ROOT=../IR0  or IR0_UAPI_TARBALL=...
+#   make build ARCH=x86_64
+#   make rootfs-tree PROFILE=minimal ARCH=x86_64
+#   make image-minix PROFILE=minimal ARCH=x86_64
 #
-# The kernel tree is only used for image tooling (MINIX injection, ISO) and
-# UAPI headers; no kernel source is compiled here.
+# Kernel tree is only used for UAPI export and optional image adapters.
 
-# profiles-check uses process substitution.
 SHELL := /bin/bash
 
 IR0_ROOT ?= $(abspath $(CURDIR)/../IR0)
 DISK     ?= $(CURDIR)/out/disk.img
 DISK_MB  ?= 200
-PROFILE  ?= development
+PROFILE  ?= minimal
+ARCH     ?= x86_64
 
-PACKAGES  = busybox runit opendoas ncurses nano
-OUT       = $(CURDIR)/out
-SYSROOT   = $(CURDIR)/sysroot
+# Ensure out/ exists before toolchain stamp generation.
+$(shell mkdir -p $(CURDIR)/out)
+# Make's default CC=cc must not shadow the musl toolchain facade.
+ifeq ($(origin CC),default)
+  CC :=
+endif
+include mk/toolchain.mk
 
-MUSL_CC ?= $(shell command -v x86_64-linux-musl-gcc 2>/dev/null || command -v musl-gcc 2>/dev/null)
-export MUSL_CC
+ALL_PACKAGES = busybox runit opendoas ncurses nano
+PACKAGES ?= $(ALL_PACKAGES)
 
-.PHONY: all fetch headers build build-packages build-services disk rootfs image \
-	profiles-check clean distclean help check-kernel \
-	$(addprefix build-,$(PACKAGES))
+.PHONY: all fetch headers build build-packages build-services build-tests \
+	disk rootfs rootfs-tree rootfs-manifest rootfs-tar image-minix image \
+	profiles-check toolchain-check elf-audit uapi-audit personal-data-check \
+	rootfs-check release-check clean distclean help check-kernel \
+	compat-links $(addprefix build-,$(ALL_PACKAGES))
 
 all: build
 
 help:
-	@echo "IR0-userspace targets: fetch headers build rootfs image profiles-check clean"
-	@echo "  IR0_ROOT=$(IR0_ROOT)"
-	@echo "  PROFILE=$(PROFILE) (development | desktop | appliance)"
+	@echo "IR0-userspace — canonical distro builder"
+	@echo "  ARCH=$(ARCH)  PROFILE=$(PROFILE)  IR0_ROOT=$(IR0_ROOT)"
+	@echo "  Targets: fetch headers build toolchain-check elf-audit"
+	@echo "           rootfs-tree rootfs-tar image-minix image rootfs"
+	@echo "           profiles-check personal-data-check rootfs-check release-check"
 
 check-kernel:
 	@if [ ! -f "$(IR0_ROOT)/scripts/inject_init_minix.py" ]; then \
 		echo "✗ kernel tree not found at IR0_ROOT=$(IR0_ROOT)"; \
-		echo "  export IR0_ROOT=/path/to/IR0"; \
+		echo "  export IR0_ROOT=/path/to/IR0  (only needed for MINIX/ISO adapters)"; \
 		exit 1; \
 	fi
 
 fetch:
 	@chmod +x scripts/fetch-package.sh
-	@for p in $(PACKAGES); do scripts/fetch-package.sh $$p; done
+	@for p in $(ALL_PACKAGES); do scripts/fetch-package.sh $$p; done
 
-headers: check-kernel
-	@$(MAKE) -s -C $(IR0_ROOT) headers_install DESTDIR=$(SYSROOT)
+# UAPI: sibling tree, tarball, or pre-populated IR0_UAPI_SYSROOT.
+headers:
+	@chmod +x scripts/install-uapi.sh
+	@IR0_ROOT="$(IR0_ROOT)" IR0_UAPI_TARBALL="$(IR0_UAPI_TARBALL)" \
+		IR0_UAPI_SYSROOT="$(IR0_UAPI_SYSROOT)" \
+		scripts/install-uapi.sh
 
-build: build-packages build-services
+build: build-packages build-services compat-links
 
 build-packages: $(addprefix build-,$(PACKAGES))
 
-# Per-package entry points so the kernel tree can request just what a gate
-# needs without two make jobs racing on the same source tree.
-$(addprefix build-,$(PACKAGES)): build-%:
-	@chmod +x packages/$*/build.sh
-	@packages/$*/build.sh
+$(addprefix build-,$(ALL_PACKAGES)): build-%:
+	@chmod +x packages/$*/build.sh scripts/toolchain.sh
+	@status=$$(ARCH=$(ARCH) bash -c 'source scripts/toolchain.sh && toolchain_pkg_status $*'); \
+	echo "  PKG     $* [$$status] ARCH=$(ARCH)"; \
+	case "$$status" in \
+		unsupported) echo "✗ $* unsupported on ARCH=$(ARCH)"; exit 1 ;; \
+		blocked-by-package|blocked-by-kernel-ABI) \
+			echo "  SKIP    $* ($$status)"; exit 0 ;; \
+	esac; \
+	ARCH=$(ARCH) CC="$(CC)" MUSL_CC="$(CC)" PRODUCT_OUT="$(PRODUCT_OUT)" \
+		OUT="$(PRODUCT_OUT)" SYSROOT="$(SYSROOT)" \
+		packages/$*/build.sh
 
 build-services:
+	@chmod +x scripts/build-services.sh scripts/toolchain.sh
+	@ARCH=$(ARCH) CC="$(CC)" MUSL_CC="$(CC)" PRODUCT_OUT="$(PRODUCT_OUT)" \
+		SMOKE_OUT="$(SMOKE_OUT)" SYSROOT="$(SYSROOT)" \
+		scripts/build-services.sh product
+
+build-tests:
 	@chmod +x scripts/build-services.sh
-	@scripts/build-services.sh
+	@ARCH=$(ARCH) CC="$(CC)" MUSL_CC="$(CC)" PRODUCT_OUT="$(PRODUCT_OUT)" \
+		SMOKE_OUT="$(SMOKE_OUT)" TESTS_OUT="$(TESTS_OUT)" SYSROOT="$(SYSROOT)" \
+		scripts/build-services.sh smoke
+	@$(MAKE) -s -C tests/host run
+
+# Legacy paths expected by the kernel tree (symlinks into out/<arch>/product).
+compat-links:
+	@mkdir -p out
+	@ln -sfn "$(PRODUCT_OUT)/busybox-full" out/busybox-full
+	@ln -sfn "$(PRODUCT_OUT)/busybox-auth" out/busybox-auth
+	@ln -sfn "$(PRODUCT_OUT)/bin" out/bin
+	@ln -sfn "$(PRODUCT_OUT)/stage-bin" out/stage-bin
+
+toolchain-check:
+	@chmod +x scripts/toolchain.sh
+	@ARCH=$(ARCH) bash -c 'source scripts/toolchain.sh && \
+		echo "ARCH=$$ARCH TARGET_TRIPLE=$$TARGET_TRIPLE"; \
+		echo "CC=$$CC"; $$CC --version | head -1; \
+		echo "READELF=$$READELF"; \
+		echo "✓ toolchain-check OK"'
+
+elf-audit: compat-links
+	@chmod +x scripts/elf-audit.sh
+	@ARCH=$(ARCH) READELF="$(READELF)" PRODUCT_OUT="$(PRODUCT_OUT)" \
+		scripts/elf-audit.sh
+
+uapi-audit:
+	@chmod +x scripts/uapi-audit.sh
+	@IR0_UAPI_SYSROOT="$(IR0_UAPI_SYSROOT)" scripts/uapi-audit.sh
+
+personal-data-check:
+	@chmod +x scripts/personal-data-check.sh
+	@PROFILE=$(PROFILE) ARCH=$(ARCH) ROOTFS_OUT="$(ROOTFS_OUT)" \
+		scripts/personal-data-check.sh
+
+profiles-check: compat-links
+	@chmod +x scripts/profiles-check.sh
+	@PRODUCT_OUT="$(PRODUCT_OUT)" scripts/profiles-check.sh
+
+rootfs-tree: build
+	@chmod +x scripts/stage-rootfs.sh
+	@IR0_ROOT="$(IR0_ROOT)" IR0_PRODUCT_PROFILE="$(PROFILE)" ARCH="$(ARCH)" \
+		PRODUCT_OUT="$(PRODUCT_OUT)" ROOTFS_OUT="$(ROOTFS_OUT)" \
+		IR0_GUEST_MANDOC_DIR="$(IR0_GUEST_MANDOC_DIR)" \
+		scripts/stage-rootfs.sh "$(ROOTFS_OUT)/$(PROFILE)"
+
+rootfs-manifest: rootfs-tree
+	@chmod +x scripts/rootfs-manifest.sh
+	@scripts/rootfs-manifest.sh "$(ROOTFS_OUT)/$(PROFILE)" \
+		"$(ROOTFS_OUT)/$(PROFILE).manifest"
+
+rootfs-tar: rootfs-manifest
+	@tar --sort=name --owner=0 --group=0 --numeric-owner \
+		--mtime="@$${SOURCE_DATE_EPOCH:-0}" \
+		-C "$(ROOTFS_OUT)/$(PROFILE)" -cf "$(ROOTFS_OUT)/$(PROFILE).tar" .
+	@echo "✓ rootfs-tar $(ROOTFS_OUT)/$(PROFILE).tar"
 
 $(DISK): | check-kernel
 	@mkdir -p $(dir $(DISK))
@@ -73,34 +152,31 @@ $(DISK): | check-kernel
 
 disk: $(DISK)
 
-rootfs: check-kernel $(DISK)
-	@chmod +x scripts/install-to-disk.sh
-	@IR0_ROOT=$(IR0_ROOT) IR0_PRODUCT_PROFILE=$(PROFILE) \
-		scripts/install-to-disk.sh $(DISK)
+# Primary image path: finished tree → MINIX adapter.
+image-minix: check-kernel rootfs-tree $(DISK)
+	@chmod +x scripts/pack-minix.sh
+	@IR0_ROOT="$(IR0_ROOT)" ARCH="$(ARCH)" PROFILE="$(PROFILE)" \
+		scripts/pack-minix.sh "$(ROOTFS_OUT)/$(PROFILE)" "$(DISK)"
 
-image: rootfs
+# Backward-compatible alias used by the kernel tree.
+rootfs: image-minix
+
+image: image-minix
 	@$(MAKE) -s -C $(IR0_ROOT) kernel-x64-userspace.iso
-	@echo "✓ image ready: kernel $(IR0_ROOT)/kernel-x64-userspace.iso + rootfs $(DISK)"
+	@echo "✓ image ready: $(IR0_ROOT)/kernel-x64-userspace.iso + $(DISK)"
 
-# Applet profiles must stay a subset of what the full BusyBox binary provides.
-profiles-check:
-	@set -e; \
-	full=$(OUT)/busybox-full; \
-	if [ ! -x "$$full" ]; then echo "✗ missing $$full (make build)"; exit 1; fi; \
-	$$full --list | sort > /tmp/ir0-us-applets.txt; \
-	for prof in profiles/*.txt; do \
-		[ -f "$$prof" ] || continue; \
-		missing=$$(comm -23 <(grep -vE '^\s*(#|$$)' $$prof | sort) /tmp/ir0-us-applets.txt); \
-		if [ -n "$$missing" ]; then \
-			echo "✗ $$prof requires applets absent from busybox-full:"; \
-			echo "$$missing"; exit 1; \
-		fi; \
-		echo "  $$(basename $$prof .txt): $$(grep -cvE '^\s*(#|$$)' $$prof) applets"; \
-	done; \
-	echo "✓ profiles-check OK"
+rootfs-check: rootfs-tree personal-data-check
+	@chmod +x scripts/rootfs-check.sh
+	@PROFILE=$(PROFILE) ARCH=$(ARCH) READELF="$(READELF)" \
+		scripts/rootfs-check.sh "$(ROOTFS_OUT)/$(PROFILE)"
+
+release-check: toolchain-check elf-audit uapi-audit profiles-check \
+	rootfs-check rootfs-manifest
+	@$(MAKE) -s -C tests/host run
+	@echo "✓ release-check OK PROFILE=$(PROFILE) ARCH=$(ARCH)"
 
 clean:
-	@rm -rf $(OUT)
+	@rm -rf out
 	@echo "✓ clean (out/ removed; sources kept)"
 
 distclean: clean
