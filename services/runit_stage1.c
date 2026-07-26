@@ -54,12 +54,19 @@ static void run_helper(const char *path)
 	(void)waitpid(pid, &status, 0);
 }
 
+static int want_fsck(void)
+{
+	/* Skip unconditional fsck when the profile opts out. */
+	return access("/etc/ir0-skip-fsck", F_OK) != 0;
+}
+
 int main(void)
 {
 	char *const argv2[] = { "/etc/runit/2", NULL };
 	char *const argv_rec[] = { "/sbin/ir0-recovery", NULL };
 
-	run_helper("/sbin/fsck.ir0");
+	if (want_fsck())
+		run_helper("/sbin/fsck.ir0");
 	run_helper("/sbin/ir0-firstboot");
 
 	ir0_smoke_tag("RUNIT_STAGE1_OK\n");

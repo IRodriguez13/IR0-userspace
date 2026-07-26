@@ -153,10 +153,39 @@ static int start_session(const struct ir0_account *acct)
 	(void)setenv("PATH", "/bin:/sbin:/usr/bin:/usr/sbin", 1);
 	(void)setenv("HOSTNAME", host, 1);
 	/*
+	 * TERM: inherited env → /etc/console.conf → documented fallback "linux".
 	 * ncurses/nano are built with linux/vt100/xterm fallbacks only.
-	 * Unset TERM defaults to vt220 inside ncurses → "Error opening terminal".
 	 */
-	(void)setenv("TERM", "linux", 1);
+	{
+		char termbuf[64];
+		const char *term = getenv("TERM");
+		FILE *cf;
+		char line[128];
+
+		snprintf(termbuf, sizeof(termbuf), "linux");
+		if (!term || !term[0])
+		{
+			cf = fopen("/etc/console.conf", "r");
+			if (cf)
+			{
+				while (fgets(line, sizeof(line), cf))
+				{
+					if (strncmp(line, "TERM=", 5) == 0)
+					{
+						char *v = line + 5;
+
+						strip_ws(v);
+						if (v[0])
+							snprintf(termbuf, sizeof(termbuf), "%s", v);
+						break;
+					}
+				}
+				fclose(cf);
+			}
+			term = termbuf;
+		}
+		(void)setenv("TERM", term, 1);
+	}
 
 	{
 		char tag[64];
@@ -213,7 +242,7 @@ static void read_virt_label(char *out, size_t outlen)
 
 	if (!out || outlen == 0)
 		return;
-	snprintf(out, outlen, "bare metal");
+	snprintf(out, outlen, "unknown");
 	f = fopen("/proc/cpuinfo", "r");
 	if (!f)
 		return;
@@ -224,13 +253,7 @@ static void read_virt_label(char *out, size_t outlen)
 			char *v = line + 18;
 
 			strip_ws(v);
-			if (strcmp(v, "KVMKVMKVM") == 0 ||
-			    strncmp(v, "TCGTCGTCG", 9) == 0 ||
-			    strstr(v, "TCG") != NULL)
-				snprintf(out, outlen, "QEMU TCG");
-			else if (strstr(v, "KVM") != NULL)
-				snprintf(out, outlen, "QEMU KVM");
-			else if (v[0])
+			if (v[0])
 			{
 				size_t n = 0;
 
@@ -241,13 +264,8 @@ static void read_virt_label(char *out, size_t outlen)
 				}
 				out[n] = '\0';
 			}
-			else
-				snprintf(out, outlen, "hypervisor");
 			break;
 		}
-		if (strstr(line, "hypervisor") != NULL &&
-		    strncmp(line, "flags\t", 6) == 0)
-			snprintf(out, outlen, "QEMU TCG");
 	}
 	fclose(f);
 }
@@ -281,22 +299,31 @@ static void print_welcome(enum ir0_product_profile profile)
 	if (dot)
 		*dot = '\0';
 
-	snprintf(banner, sizeof(banner),
-		 "\nWelcome to IR0/Unix\n"
-		 "  Kernel:  %s %s\n"
-		 "  Machine: %s · %s\n"
-		 "  Uptime:  %s s\n"
-		 "  Docs:    man IR0\n"
-		 "  Status:  ir0-status\n"
-		 "%s\n",
-		 u.sysname[0] ? u.sysname : "IR0",
-		 u.release[0] ? u.release : "?",
-		 u.machine[0] ? u.machine : "?", virt,
-		 uptime[0] ? uptime : "unknown",
-		 profile == PROFILE_DEVELOPMENT
-			 ? "\nIR0/Unix development environment\n"
-			   "WARNING: automatic root login is enabled\n"
-			 : "");
+	{
+		char docs[80] = "";
+		char status[80] = "";
+
+		if (access("/bin/man", X_OK) == 0 || access("/usr/bin/man", X_OK) == 0)
+			snprintf(docs, sizeof(docs), "  Docs:    man IR0-boot\n");
+		if (access("/bin/ir0-status", X_OK) == 0)
+			snprintf(status, sizeof(status), "  Status:  ir0-status\n");
+		snprintf(banner, sizeof(banner),
+			 "\nWelcome to IR0/Unix\n"
+			 "  Kernel:  %s %s\n"
+			 "  Machine: %s · %s\n"
+			 "  Uptime:  %s s\n"
+			 "%s%s"
+			 "%s\n",
+			 u.sysname[0] ? u.sysname : "IR0",
+			 u.release[0] ? u.release : "?",
+			 u.machine[0] ? u.machine : "?", virt,
+			 uptime[0] ? uptime : "unknown",
+			 docs, status,
+			 profile == PROFILE_DEVELOPMENT
+				 ? "\nIR0/Unix development environment\n"
+				   "WARNING: automatic root login is enabled\n"
+				 : "");
+	}
 	puts_fd(banner);
 }
 
