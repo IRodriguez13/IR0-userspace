@@ -22,7 +22,12 @@ echo "$CC -D_GNU_SOURCE -static -Os -fno-pie" >conf-cc
 echo "$CC -static -no-pie" >conf-ld
 
 make -s clean 2>/dev/null || true
-make -s sysdeps
+# Upstream sysdeps/configure probes groff HTML; log it, do not spam the join path.
+sysdeps_log="${PKG}/sysdeps-${ARCH}.log"
+if ! make -s sysdeps >"${sysdeps_log}" 2>&1; then
+	cat "${sysdeps_log}" >&2
+	exit 1
+fi
 make -s runit runit-init runsvdir runsv sv chpst
 
 for bin in runit runit-init runsvdir runsv sv chpst; do

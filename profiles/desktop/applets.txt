@@ -31,4 +31,7 @@ env
 sleep
 clear
 which
+man
+less
+more
 id

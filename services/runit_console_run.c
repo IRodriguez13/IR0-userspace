@@ -23,6 +23,7 @@
 #include <sys/stat.h>
 #include <sys/types.h>
 #include <sys/utsname.h>
+#include <sys/wait.h>
 #include <unistd.h>
 
 #include "ir0_auth.h"
@@ -73,6 +74,50 @@ static void attach_console(void)
 	(void)dup2(fd, 2);
 	if (fd > 2)
 		(void)close(fd);
+}
+
+static int path_is_reg(const char *path)
+{
+	struct stat st;
+
+	return stat(path, &st) == 0 && S_ISREG(st.st_mode);
+}
+
+static int firstboot_pending(void)
+{
+	if (path_is_reg("/var/lib/ir0/firstboot.done") ||
+	    path_is_reg("/etc/firstboot.done"))
+		return 0;
+	/* Legacy markers from older images. */
+	if (path_is_reg("/var/lib/ir0/fb.done") || path_is_reg("/etc/fb.done") ||
+	    path_is_reg("/etc/ir0-firstboot-done"))
+		return 0;
+	return 1;
+}
+
+/* Interactive wizard once, on the real console TTY (not in stage1). */
+static void run_firstboot_if_pending(void)
+{
+	pid_t pid;
+	int status;
+
+	if (!firstboot_pending())
+		return;
+	if (access("/sbin/ir0-firstboot", X_OK) != 0)
+		return;
+
+	pid = fork();
+	if (pid < 0)
+		return;
+	if (pid == 0)
+	{
+		char *const argv[] = { "/sbin/ir0-firstboot", "--wizard", NULL };
+
+		execv(argv[0], argv);
+		_exit(127);
+	}
+	(void)waitpid(pid, &status, 0);
+	(void)ir0_tty_restore_cooked();
 }
 
 /* Audit trail without secrets: user, tty and outcome only. */
@@ -162,7 +207,7 @@ static int start_session(const struct ir0_account *acct)
 		FILE *cf;
 		char line[128];
 
-		snprintf(termbuf, sizeof(termbuf), "linux");
+		memcpy(termbuf, "linux", 6);
 		if (!term || !term[0])
 		{
 			cf = fopen("/etc/console.conf", "r");
@@ -173,10 +218,17 @@ static int start_session(const struct ir0_account *acct)
 					if (strncmp(line, "TERM=", 5) == 0)
 					{
 						char *v = line + 5;
+						size_t n;
 
 						strip_ws(v);
-						if (v[0])
-							snprintf(termbuf, sizeof(termbuf), "%s", v);
+						n = strlen(v);
+						if (n >= sizeof(termbuf))
+							n = sizeof(termbuf) - 1;
+						if (n > 0)
+						{
+							memcpy(termbuf, v, n);
+							termbuf[n] = '\0';
+						}
 						break;
 					}
 				}
@@ -331,7 +383,6 @@ int main(void)
 {
 	char user[IR0_AUTH_NAME_MAX];
 	char pass[IR0_AUTH_HASH_MAX];
-	char host[64];
 	char prompt[96];
 	struct ir0_account acct;
 	enum ir0_product_profile profile;
@@ -349,6 +400,9 @@ int main(void)
 		for (;;)
 			(void)pause();
 	}
+
+	run_firstboot_if_pending();
+	(void)ir0_tty_restore_cooked();
 
 	auto_f = fopen("/etc/ir0-autologin", "r");
 	if (auto_f)
@@ -374,12 +428,12 @@ int main(void)
 		ir0_smoke_tag("LOGIN_AUTO_FAIL\n");
 	}
 
-	/* Traditional Unix prompt: "<hostname> login:". */
-	ir0_hostname(host, sizeof(host));
-	snprintf(prompt, sizeof(prompt), "%s login: ", host[0] ? host : "ir0");
+	snprintf(prompt, sizeof(prompt), "Enter your Unix username: ");
 
 	for (;;)
 	{
+		/* Drop keys typed during the prior delay / password silence. */
+		(void)ir0_tty_restore_cooked();
 		print_issue();
 		puts_fd(prompt);
 		(void)ir0_read_line(user, sizeof(user), 1);
@@ -391,6 +445,7 @@ int main(void)
 		(void)ir0_read_line(pass, sizeof(pass), 0);
 		ir0_smoke_tag("LOGIN_PASS_READ\n");
 		puts_fd("\n");
+		(void)ir0_tty_restore_cooked();
 
 		if (auth_user(user, pass, &acct) != 0)
 		{
@@ -398,6 +453,8 @@ int main(void)
 			puts_fd("Login incorrect\n");
 			audit("login denied", user);
 			sleep(1);
+			/* Typing during the delay must not become the next username. */
+			(void)ir0_tty_flush_input();
 			continue;
 		}
 		ir0_wipe(pass, sizeof(pass));

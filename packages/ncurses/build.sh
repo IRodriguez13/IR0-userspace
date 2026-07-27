@@ -25,7 +25,8 @@ cd "$SRC"
 
 echo "  NCURSES Configuring $(cat "$PKG/version") (static, fallbacks)..."
 make distclean >/dev/null 2>&1 || true
-CC="$CC" CFLAGS="-Os -fno-pie" LDFLAGS="-static -no-pie" \
+cfg_log="${PKG}/configure-${ARCH}.log"
+if ! CC="$CC" CFLAGS="-Os -fno-pie" LDFLAGS="-static -no-pie" \
 	./configure \
 	--prefix=/usr \
 	--host="${TARGET_TRIPLE}" \
@@ -43,7 +44,10 @@ CC="$CC" CFLAGS="-Os -fno-pie" LDFLAGS="-static -no-pie" \
 	--with-fallbacks=linux,vt100,xterm \
 	--disable-widec \
 	--enable-termcap \
-	>"${PKG}/configure-${ARCH}.log"
+	>"${cfg_log}" 2>&1; then
+	cat "${cfg_log}" >&2
+	exit 1
+fi
 
 echo "  NCURSES Building..."
 make -s -j"$(nproc)"

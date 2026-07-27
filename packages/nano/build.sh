@@ -46,11 +46,12 @@ NANO_LDFLAGS="-static -no-pie -L${LIBDIR}"
 NANO_VER=$(cat "${PKG}/version")
 echo "  NANO    Configuring ${NANO_VER} tiny static..."
 make distclean >/dev/null 2>&1 || true
-CC="$CC" \
-CFLAGS="$NANO_CFLAGS" \
-CPPFLAGS="$NANO_CPPFLAGS" \
-LDFLAGS="$NANO_LDFLAGS" \
-LIBS="-lncurses" \
+cfg_log="${PKG}/configure-${ARCH}.log"
+if ! CC="$CC" \
+	CFLAGS="$NANO_CFLAGS" \
+	CPPFLAGS="$NANO_CPPFLAGS" \
+	LDFLAGS="$NANO_LDFLAGS" \
+	LIBS="-lncurses" \
 	./configure \
 	--host="${TARGET_TRIPLE}" \
 	--prefix=/usr \
@@ -58,7 +59,10 @@ LIBS="-lncurses" \
 	--disable-nls \
 	--disable-libmagic \
 	--enable-utf8=no \
-	>"${PKG}/configure-${ARCH}.log"
+	>"${cfg_log}" 2>&1; then
+	cat "${cfg_log}" >&2
+	exit 1
+fi
 
 echo "  NANO    Building lib + src..."
 make -s -j"$(nproc)" -C lib \

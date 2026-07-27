@@ -58,3 +58,6 @@ sha256sum
 halt
 reboot
 poweroff
+man
+less
+more

@@ -49,6 +49,9 @@ printenv
 sleep
 clear
 which
+man
+less
+more
 
 # Inspection / process / terminal (best-effort in guest; smoke may SKIP)
 find

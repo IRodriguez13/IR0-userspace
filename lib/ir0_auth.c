@@ -18,6 +18,7 @@
 
 #include <errno.h>
 #include <fcntl.h>
+#include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -38,11 +39,20 @@ extern char *crypt(const char *key, const char *salt);
  */
 #define IR0_TCGETS 0x5401u
 #define IR0_TCSETS 0x5402u
-#define IR0_IFLAG_ICRNL  0x00000400u
+#define IR0_TCSETSF 0x5404u
+#define IR0_TCFLSH 0x540Bu
+/* Must match includes/ir0/console.h (Linux asm-generic/termbits). */
+#define IR0_IFLAG_ICRNL  0x00000100u
+#define IR0_LFLAG_ISIG   0x00000001u
 #define IR0_LFLAG_ICANON 0x00000002u
 #define IR0_LFLAG_ECHO   0x00000008u
 #define IR0_LFLAG_ECHOE  0x00000010u
 #define IR0_LFLAG_ECHOK  0x00000020u
+#define IR0_LFLAG_ECHONL 0x00000040u
+#define IR0_CC_VERASE    2
+#define IR0_CC_VEOF      4
+#define IR0_CC_VTIME     5
+#define IR0_CC_VMIN      6
 
 struct ir0_ktios
 {
@@ -67,7 +77,9 @@ static int ir0_tty_set_echo(int enable)
 	 * (do not trust a zeroed/partial iflag from a bad get).
 	 */
 	t.c_iflag |= IR0_IFLAG_ICRNL;
-	t.c_lflag |= IR0_LFLAG_ICANON;
+	t.c_lflag |= (IR0_LFLAG_ISIG | IR0_LFLAG_ICANON);
+	/* Keep ECHONL so Enter still advances the cursor with ECHO off. */
+	t.c_lflag |= IR0_LFLAG_ECHONL;
 	if (enable)
 		t.c_lflag |= (IR0_LFLAG_ECHO | IR0_LFLAG_ECHOE | IR0_LFLAG_ECHOK);
 	else
@@ -75,9 +87,40 @@ static int ir0_tty_set_echo(int enable)
 	return syscall(SYS_ioctl, 0, IR0_TCSETS, &t) == 0 ? 0 : -1;
 }
 
-/* Public: restore cooked+echo before exec'ing the login shell. */
+int ir0_tty_flush_input(void)
+{
+	int arg = 0; /* TCIFLUSH */
+
+	return syscall(SYS_ioctl, 0, IR0_TCFLSH, &arg) == 0 ? 0 : -1;
+}
+
+/* Public: restore cooked+echo and drop pending keystrokes (login prompts). */
 int ir0_tty_restore_cooked(void)
 {
+	struct ir0_ktios t;
+
+	memset(&t, 0, sizeof(t));
+	if (syscall(SYS_ioctl, 0, IR0_TCGETS, &t) != 0)
+		memset(&t, 0, sizeof(t));
+
+	t.c_iflag |= IR0_IFLAG_ICRNL;
+	t.c_lflag |= (IR0_LFLAG_ISIG | IR0_LFLAG_ICANON | IR0_LFLAG_ECHO |
+		      IR0_LFLAG_ECHOE | IR0_LFLAG_ECHOK | IR0_LFLAG_ECHONL);
+	if (t.c_cc[IR0_CC_VERASE] == 0)
+		t.c_cc[IR0_CC_VERASE] = 127;
+	if (t.c_cc[IR0_CC_VEOF] == 0)
+		t.c_cc[IR0_CC_VEOF] = 4;
+	t.c_cc[IR0_CC_VMIN] = 1;
+	t.c_cc[IR0_CC_VTIME] = 0;
+
+	/*
+	 * TCSETSF: apply flags and flush the canon queue. Without this, keys
+	 * typed during sleep(1) after "Login incorrect" complete into
+	 * canon_readq and the next username read returns instantly — then
+	 * "Password:" is glued onto the username prompt.
+	 */
+	if (syscall(SYS_ioctl, 0, IR0_TCSETSF, &t) == 0)
+		return 0;
 	return ir0_tty_set_echo(1);
 }
 
@@ -252,17 +295,31 @@ static int random_salt(char *out, size_t outlen)
 	size_t i;
 	int fd;
 	ssize_t got;
+	unsigned int mix;
 
 	if (outlen < SALT_LEN + 1)
 		return -1;
 
+	memset(raw, 0, sizeof(raw));
 	fd = open("/dev/urandom", O_RDONLY);
-	if (fd < 0)
-		return -1;
-	got = read(fd, raw, sizeof(raw));
-	(void)close(fd);
+	if (fd >= 0)
+	{
+		got = read(fd, raw, sizeof(raw));
+		(void)close(fd);
+	}
+	else
+		got = -1;
 	if (got != (ssize_t)sizeof(raw))
-		return -1;
+	{
+		/* Firstboot must not fail if urandom is briefly unavailable. */
+		mix = (unsigned int)getpid() ^ (unsigned int)getppid();
+		mix ^= (unsigned int)(uintptr_t)&mix;
+		for (i = 0; i < SALT_LEN; i++)
+		{
+			mix = mix * 1664525u + 1013904223u;
+			raw[i] = (unsigned char)(mix >> 16);
+		}
+	}
 
 	for (i = 0; i < SALT_LEN; i++)
 		out[i] = SALT_CHARS[raw[i] % (sizeof(SALT_CHARS) - 1)];

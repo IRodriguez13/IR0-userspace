@@ -27,9 +27,13 @@ build_variant()
 
 	echo "  BUSYBOX Building $(basename "$out") ARCH=${ARCH}"
 	"${ROOT}/scripts/busybox_apply_fragment.sh" "$SRC" "$fragment"
+	# Upstream BusyBox emits -Wunused-result / -Wformat-security noise (target
+	# and host helpers like applets/usage); keep our tree log clean.
+	local bb_cflags="-fno-pie -Wno-unused-result -Wno-format-security"
+	local bb_hostcflags="-Wno-unused-result -Wno-format-security"
 	make -C "$SRC" CC="$CC" -s clean >/dev/null 2>&1 || true
-	make -C "$SRC" CC="$CC" CFLAGS="-fno-pie" LDFLAGS="-no-pie" \
-		-s -j"$(nproc)"
+	make -C "$SRC" CC="$CC" CFLAGS="$bb_cflags" HOSTCFLAGS="$bb_hostcflags" \
+		LDFLAGS="-no-pie" -s -j"$(nproc)"
 	cp -f "$SRC/busybox" "$out"
 	file "$out" | grep -q ELF
 }

@@ -1,39 +1,63 @@
 # IR0-userspace
 
-Declarative builder for the **canonical minimal IR0/Unix** distribution:
-runit PID 1, BusyBox, login/auth, firstboot, recovery, and `/etc` overlays.
+Declarative builder for **ISD — IR0 Software Distribution**, the canonical
+minimal product image on top of the IR0 kernel: runit PID 1, BusyBox,
+login/auth, firstboot, recovery, and `/etc` overlays.
 
-Sibling kernel: [`IR0`](https://github.com/IRodriguez13/IR0) — used only for
-public UAPI (`headers_install`), optional MINIX/ISO adapters, and integration
-smokes. See [`Documentation/DISTRO_CONTRACT.md`](Documentation/DISTRO_CONTRACT.md).
+Sibling kernel: [`IR0`](https://github.com/IRodriguez13/IR0) — public UAPI
+(`headers_install`), pack adapters, and integration smokes. See
+[`Documentation/DISTRO_CONTRACT.md`](Documentation/DISTRO_CONTRACT.md).
+
+| Layer | Repo | Role |
+|-------|------|------|
+| Kernel | [IR0](https://github.com/IRodriguez13/IR0) | mechanisms, drivers, UAPI, KTM |
+| Userland | **IR0-userspace** (this tree) | packages, init, services, rootfs |
+| Product | **ISD** | integrated bootable image |
+
+<p align="center">
+  <img src="Documentation/assets/isd-firstboot.png" alt="ISD first boot — create your account" width="720" />
+</p>
+
+<p align="center"><em>ISD first boot wizard (generic account; password also authenticates doas).</em></p>
+
+<p align="center">
+  <img src="Documentation/assets/isd-shell-session.png" alt="ISD shell — ls, uname, doas" width="720" />
+</p>
+
+<p align="center"><em>Minimal shell session after login: rootfs layout, <code>uname -a</code>, <code>doas</code>.</em></p>
 
 ```bash
+# Sibling layout (recommended)
 git clone https://github.com/IRodriguez13/IR0.git
 git clone https://github.com/IRodriguez13/IR0-userspace.git
-export IR0_ROOT=$PWD/IR0
-cd IR0-userspace
+cd IR0
+make defconfig
+make first-boot          # wires UAPI + rootfs + ISO via this repo
+make run
+```
+
+From this tree alone:
+
+```bash
+export IR0_ROOT=../IR0
 make fetch
-make headers
+make headers             # or: IR0_UAPI_TARBALL=/path/ir0-uapi.tar
 make build ARCH=x86_64
 make rootfs-tree PROFILE=minimal ARCH=x86_64
 make image-minix PROFILE=minimal ARCH=x86_64
 ```
 
-Without a sibling checkout:
+Compat symlinks under `out/{busybox-full,bin,stage-bin,smoke}` keep the kernel
+Makefile paths working after `out/<arch>/product/` relocation.
 
-```bash
-make headers IR0_UAPI_TARBALL=/path/ir0-uapi.tar
-make build ARCH=x86_64
-make rootfs-tar PROFILE=minimal ARCH=x86_64
-```
 
 ## Profiles
 
 | Profile | Role |
 |---------|------|
-| `minimal` | **Default** — canonical interactive distro |
-| `development` | Lab (root autologin warning, fixtures) |
-| `desktop` | minimal + doas/nano for IR0-desktop |
+| `minimal` | **Default** — first-boot user registration + doas |
+| `development` | Lab only (root autologin / fixtures) |
+| `desktop` | minimal + nano/ncurses for IR0-desktop |
 | `appliance` | Services only |
 
 ## Layout

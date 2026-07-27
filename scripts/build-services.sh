@@ -36,6 +36,7 @@ build_product()
 	cc_one "$PRODUCT_STAGE" fsck.ir0 fsck.ir0.c
 	cc_one "$PRODUCT_STAGE" ir0_firstboot ir0_firstboot.c "$AUTH_LIB"
 	cc_one "$PRODUCT_STAGE" ir0_passwd ir0_passwd.c "$AUTH_LIB"
+	cc_one "$PRODUCT_STAGE" ir0_adduser ir0_adduser.c "$AUTH_LIB"
 	cc_one "$PRODUCT_STAGE" ir0_status ir0_status.c
 	cc_one "$PRODUCT_STAGE" ir0_recovery ir0_recovery.c
 	cc_one "$PRODUCT_STAGE" mount_root_rw mount_root_rw.c

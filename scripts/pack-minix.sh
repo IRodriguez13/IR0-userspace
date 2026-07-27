@@ -41,6 +41,14 @@ inject_file()
 
 echo "  MINIX   packing tree $TREE → $DISK"
 
+# Empty dirs first (pseudo-fs mountpoints + firstboot state). MINIX inject
+# creates parents when writing a file; use .keep placeholders.
+for d in var/lib/ir0 var/log tmp dev proc sys heart run run/doas mnt; do
+	mkdir -p "${TREE}/${d}"
+	touch "${TREE}/${d}/.keep"
+	$INJECT "$DISK" --mode 0644 "${TREE}/${d}/.keep" "${d}/.keep"
+done
+
 inject_file "${TREE}/sbin/init" sbin/init
 inject_file "${TREE}/sbin/runit" sbin/runit
 inject_file "${TREE}/bin/runit-init" bin/runit-init
@@ -52,6 +60,10 @@ inject_file "${TREE}/sbin/ir0-firstboot" sbin/ir0-firstboot
 inject_file "${TREE}/sbin/ir0-recovery" sbin/ir0-recovery
 inject_file "${TREE}/sbin/mount-root-rw" sbin/mount-root-rw
 inject_file "${TREE}/bin/passwd" bin/passwd
+if [ -f "${TREE}/usr/sbin/adduser" ]; then
+	inject_file "${TREE}/usr/sbin/adduser" usr/sbin/adduser
+	$INJECT --hardlink "$DISK" usr/sbin/adduser sbin/adduser
+fi
 inject_file "${TREE}/bin/ir0-status" bin/ir0-status
 inject_file "${TREE}/usr/bin/busybox-auth" usr/bin/busybox-auth
 $INJECT --hardlink "$DISK" usr/bin/busybox-auth bin/login
@@ -99,6 +111,15 @@ $INJECT "$DISK" --mode 0600 "${TREE}/etc/shadow" etc/shadow
 [ -f "${TREE}/usr/lib/ir0/build-info" ] && \
 	$INJECT "$DISK" --mode 0644 "${TREE}/usr/lib/ir0/build-info" usr/lib/ir0/build-info
 
+# Guest man pages (pre-rendered ASCII cat7)
+if [ -d "${TREE}/usr/share/man/cat7" ]; then
+	for page in "${TREE}/usr/share/man/cat7"/IR0-*.7; do
+		[ -f "$page" ] || continue
+		base="$(basename "$page")"
+		$INJECT "$DISK" --mode 0644 "$page" "usr/share/man/cat7/${base}"
+	done
+fi
+
 # Homes
 if [ -d "${TREE}/root" ]; then
 	touch "${TREE}/root/.keep"
@@ -125,4 +146,4 @@ python3 "${IR0_ROOT}/scripts/verify_minix_rootfs.py" --gate "$DISK" \
 	/etc/runit/sv/console/run /etc/runit/sv/logger/run \
 	"${VERIFY_EXTRA[@]}"
 
-echo "✓ image-minix $DISK"
+echo "  MINIX   packed $DISK"

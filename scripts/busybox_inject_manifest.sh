@@ -30,7 +30,7 @@ fi
 chmod +x "${ROOT}/scripts/busybox_check_manifest.sh"
 "${ROOT}/scripts/busybox_check_manifest.sh" "$BUSYBOX_BIN" "$MANIFEST"
 
-echo "  BUSYBOX Injecting multicall → /bin/busybox + hardlink applets..."
+echo "  BUSYBOX /bin/busybox + applet hardlinks"
 $INJECT "$DISK" "$BUSYBOX_BIN" bin/busybox
 
 paths=("/bin/busybox")
@@ -75,4 +75,4 @@ $INJECT --hardlink "$DISK" bin/poweroff bin/reboot
 paths+=("/bin/poweroff" "/bin/halt" "/bin/reboot")
 
 python3 "${IR0_ROOT}/scripts/verify_minix_rootfs.py" --gate "$DISK" "${paths[@]}"
-echo "✓ busybox_inject_manifest OK (${#paths[@]} paths verified)"
+echo "  BUSYBOX ${#paths[@]} paths verified"

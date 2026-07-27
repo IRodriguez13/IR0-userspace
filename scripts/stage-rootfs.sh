@@ -61,7 +61,7 @@ install_tree "${ROOT}/rootfs/local"
 mkdir -p \
 	"${DEST}/bin" "${DEST}/sbin" "${DEST}/usr/bin" "${DEST}/usr/sbin" \
 	"${DEST}/etc" "${DEST}/dev" "${DEST}/proc" "${DEST}/sys" "${DEST}/heart" \
-	"${DEST}/run" "${DEST}/tmp" "${DEST}/var/log" "${DEST}/var/lib/ir0" \
+	"${DEST}/run" "${DEST}/run/doas" "${DEST}/tmp" "${DEST}/var/log" "${DEST}/var/lib/ir0" \
 	"${DEST}/home" "${DEST}/root" "${DEST}/mnt" \
 	"${DEST}/etc/runit/sv/console" "${DEST}/etc/runit/sv/logger" \
 	"${DEST}/etc/service" "${DEST}/etc/skel" \
@@ -74,11 +74,13 @@ chmod 0700 "${DEST}/root"
 VER="$(tr -d ' \n' < "${ROOT}/VERSION")"
 BUILD_ID="${SOURCE_DATE_EPOCH:-$(date -u +%Y%m%d)}"
 cat > "${DEST}/etc/os-release" <<EOF
-NAME="IR0/Unix"
-ID=ir0
-PRETTY_NAME="IR0/Unix ${PROFILE}"
-VERSION_ID="${VER}"
-HOME_URL="https://github.com/IRodriguez13/IR0-userspace"
+NAME="ISD"
+ID=isd
+PRETTY_NAME="ISD 0.1 — IR0 Software Distribution"
+VERSION_ID="0.1"
+KERNEL_NAME="IR0"
+KERNEL_VERSION="${VER}"
+HOME_URL="https://github.com/IRodriguez13/IR0"
 BUILD_ID="${BUILD_ID}"
 ARCH="${ARCH}"
 PROFILE="${PROFILE}"
@@ -118,6 +120,8 @@ if [ -f "$STAGE_BIN/ir0_force_power" ]; then
 	ln -f "${DEST}/bin/poweroff" "${DEST}/bin/reboot"
 fi
 install -m 04755 "$STAGE_BIN/ir0_passwd" "${DEST}/bin/passwd"
+install -m 04755 "$STAGE_BIN/ir0_adduser" "${DEST}/usr/sbin/adduser"
+ln -f "${DEST}/usr/sbin/adduser" "${DEST}/sbin/adduser"
 install -m 0755 "$BUSYBOX" "${DEST}/bin/busybox"
 install -m 04755 "$BUSYBOX_AUTH" "${DEST}/usr/bin/busybox-auth"
 ln -f "${DEST}/usr/bin/busybox-auth" "${DEST}/bin/login"
@@ -190,10 +194,16 @@ if [ -f "${ROOT}/packages/busybox/bb_status.tsv" ]; then
 		"${DEST}/etc/busybox/bb_status.tsv"
 fi
 
-# Optional guest mandocs
-if [ -n "${IR0_GUEST_MANDOC_DIR:-}" ] && [ -d "$IR0_GUEST_MANDOC_DIR" ]; then
-	mkdir -p "${DEST}/usr/share/man/cat7"
-	cp -a "${IR0_GUEST_MANDOC_DIR}/." "${DEST}/usr/share/man/cat7/" || true
+# Optional guest mandocs (host prepare-guest-mandocs → build/guest-man/usr/share/man/cat7)
+if [ -n "${IR0_GUEST_MANDOC_DIR:-}" ]; then
+	man_src="${IR0_GUEST_MANDOC_DIR}/usr/share/man/cat7"
+	if [ ! -d "$man_src" ] && [ -d "${IR0_GUEST_MANDOC_DIR}/cat7" ]; then
+		man_src="${IR0_GUEST_MANDOC_DIR}/cat7"
+	fi
+	if [ -d "$man_src" ]; then
+		mkdir -p "${DEST}/usr/share/man/cat7"
+		cp -a "${man_src}/." "${DEST}/usr/share/man/cat7/" || true
+	fi
 fi
 
 # Setuid allowlist enforcement
