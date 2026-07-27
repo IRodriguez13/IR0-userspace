@@ -19,7 +19,7 @@
 
 static inline void ir0_smoke_tag(const char *s)
 {
-	static int tag_fd = -2; /* -2 = not tried yet, -1 = fall back to stdout */
+	static int tag_fd = -2; /* -2 = not tried yet, -1 = no serial (drop) */
 	const char *p = s;
 
 	if (!s)
@@ -30,5 +30,10 @@ static inline void ir0_smoke_tag(const char *s)
 	if (tag_fd == -2)
 		tag_fd = open("/dev/serial", O_WRONLY);
 
-	(void)write(tag_fd >= 0 ? tag_fd : 1, s, (size_t)(p - s));
+	/*
+	 * Never fall back to stdout: after getty attaches /dev/console, that
+	 * pollutes the login/firstboot TTY (RUNSV_CONSOLE_START mid-prompt).
+	 */
+	if (tag_fd >= 0)
+		(void)write(tag_fd, s, (size_t)(p - s));
 }

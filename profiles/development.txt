@@ -41,6 +41,7 @@ id
 kill
 killall
 less
+man
 link
 ln
 logname

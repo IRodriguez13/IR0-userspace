@@ -7,7 +7,7 @@
  * See the LICENSE file in the project root for full license information.
  *
  * File: ir0_firstboot.c
- * Description: First-boot wizard / seed — no implicit personal identity.
+ * Description: First-boot wizard / seed (canonical IR0 paths).
  */
 
 /* SPDX-License-Identifier: GPL-3.0-only */
@@ -28,20 +28,27 @@
 #include "ir0_smoke_tag.h"
 
 #define ROOT_DENY_FILE "/etc/ir0-noroot"
-#define DONE_FILE_ETC "/etc/ir0-firstboot-done"
+#define DONE_FILE_ETC "/etc/firstboot.done"
 #define DONE_FILE_VAR "/var/lib/ir0/firstboot.done"
-#define RECOVERY_FLAG "/etc/ir0-recovery-enabled"
+#define DONE_FILE_ETC_LEGACY_SHORT "/etc/fb.done"
+#define DONE_FILE_VAR_LEGACY_SHORT "/var/lib/ir0/fb.done"
+#define DONE_FILE_ETC_LEGACY_LONG "/etc/ir0-firstboot-done"
+#define RECOVERY_FLAG "/etc/recovery"
 #define SEED_ENV "FIRSTBOOT_SEED"
+#define SEED_FILE_ETC "/etc/firstboot.seed"
+#define SEED_FILE_ETC_LEGACY "/etc/fb.seed"
 
+/* Write path in place (create/truncate). FS-agnostic; no rename. */
 static int write_file(const char *path, const char *data, mode_t mode)
 {
-	char tmp[256];
 	int fd;
 	size_t n;
 	const char *p;
 
-	snprintf(tmp, sizeof(tmp), "%s.tmp", path);
-	fd = open(tmp, O_WRONLY | O_CREAT | O_TRUNC, mode);
+	if (!path || !data)
+		return -1;
+
+	fd = open(path, O_WRONLY | O_CREAT | O_TRUNC, mode);
 	if (fd < 0)
 		return -1;
 	p = data;
@@ -53,7 +60,6 @@ static int write_file(const char *path, const char *data, mode_t mode)
 		if (w <= 0)
 		{
 			(void)close(fd);
-			(void)unlink(tmp);
 			return -1;
 		}
 		p += (size_t)w;
@@ -63,31 +69,38 @@ static int write_file(const char *path, const char *data, mode_t mode)
 	(void)fsync(fd);
 #endif
 	(void)close(fd);
-	(void)chmod(tmp, mode);
-	if (rename(tmp, path) != 0)
-	{
-		(void)unlink(tmp);
-		return -1;
-	}
+	(void)chmod(path, mode);
 	return 0;
 }
 
 static int mark_done(void)
 {
+	int ok_etc;
+	int ok_var;
+
+	(void)mkdir("/var", 0755);
 	(void)mkdir("/var/lib", 0755);
 	(void)mkdir("/var/lib/ir0", 0755);
-	if (write_file(DONE_FILE_ETC, "ok\n", 0644) != 0)
-		return -1;
-	return write_file(DONE_FILE_VAR, "ok\n", 0644);
+	ok_etc = write_file(DONE_FILE_ETC, "ok\n", 0644) == 0;
+	ok_var = write_file(DONE_FILE_VAR, "ok\n", 0644) == 0;
+	return (ok_etc || ok_var) ? 0 : -1;
+}
+
+static int path_is_reg(const char *path)
+{
+	struct stat st;
+
+	return stat(path, &st) == 0 && S_ISREG(st.st_mode);
 }
 
 static int already_done(void)
 {
-	struct stat st;
-
-	if (stat(DONE_FILE_VAR, &st) == 0 && S_ISREG(st.st_mode))
+	if (path_is_reg(DONE_FILE_VAR) || path_is_reg(DONE_FILE_ETC))
 		return 1;
-	if (stat(DONE_FILE_ETC, &st) == 0 && S_ISREG(st.st_mode))
+	/* Legacy markers from older images (read-only accept). */
+	if (path_is_reg(DONE_FILE_VAR_LEGACY_SHORT) ||
+	    path_is_reg(DONE_FILE_ETC_LEGACY_SHORT) ||
+	    path_is_reg(DONE_FILE_ETC_LEGACY_LONG))
 		return 1;
 	return 0;
 }
@@ -111,39 +124,37 @@ static int valid_username(const char *user)
 		      c == '_' || c == '-'))
 			return 0;
 	}
-	if (strcmp(user, "root") == 0 || strcmp(user, "ivan") == 0 ||
-	    strcmp(user, "bin") == 0 || strcmp(user, "daemon") == 0 ||
-	    strcmp(user, "nobody") == 0)
+	if (strcmp(user, "root") == 0 || strcmp(user, "bin") == 0 ||
+	    strcmp(user, "daemon") == 0 || strcmp(user, "nobody") == 0)
 		return 0;
 	return 1;
 }
 
-static int prompt_yes_no(const char *q, int def_yes)
+static void try_attach_console(void)
 {
-	char buf[16];
+	int fd;
 
-	for (;;)
-	{
-		printf("%s [%s]: ", q, def_yes ? "Y/n" : "y/N");
-		fflush(stdout);
-		if (ir0_read_line(buf, sizeof(buf), 1) != 0 || buf[0] == '\0')
-			return def_yes;
-		if (buf[0] == 'y' || buf[0] == 'Y')
-			return 1;
-		if (buf[0] == 'n' || buf[0] == 'N')
-			return 0;
-	}
+	if (isatty(0) && isatty(1))
+		return;
+	fd = open("/dev/console", O_RDWR);
+	if (fd < 0)
+		return;
+	(void)dup2(fd, 0);
+	(void)dup2(fd, 1);
+	(void)dup2(fd, 2);
+	if (fd > 2)
+		(void)close(fd);
 }
 
 static int write_accounts(const char *user, const char *host, const char *hash,
 			  int wheel, int lock_root, int recovery)
 {
 	char passwd[256];
-	char shadow[320];
+	char shadow[512];
 	char group[192];
 	char home[128];
 	char skel_src[64];
-	char skel_dst[128];
+	char skel_dst[160];
 
 	snprintf(passwd, sizeof(passwd),
 		 "root:x:0:0:root:/root:/bin/sh\n"
@@ -171,27 +182,40 @@ static int write_accounts(const char *user, const char *host, const char *hash,
 	snprintf(home, sizeof(home), "/home/%s", user);
 	(void)mkdir(home, 0700);
 	(void)chown(home, 1000, 100);
-	/* Copy /etc/skel if present */
 	snprintf(skel_src, sizeof(skel_src), "/etc/skel/.profile");
 	if (access(skel_src, R_OK) == 0)
 	{
 		snprintf(skel_dst, sizeof(skel_dst), "%s/.profile", home);
-		/* best-effort */
 		(void)link(skel_src, skel_dst);
 	}
 
 	if (write_file("/etc/passwd", passwd, 0644) != 0)
+	{
+		fprintf(stderr, "firstboot: cannot write /etc/passwd: %s\n",
+			strerror(errno));
 		return -1;
+	}
 	if (write_file("/etc/shadow", shadow, 0600) != 0)
+	{
+		fprintf(stderr, "firstboot: cannot write /etc/shadow: %s\n",
+			strerror(errno));
 		return -1;
+	}
 	if (write_file("/etc/group", group, 0644) != 0)
+	{
+		fprintf(stderr, "firstboot: cannot write /etc/group: %s\n",
+			strerror(errno));
 		return -1;
+	}
 	{
 		char hostline[80];
 
 		snprintf(hostline, sizeof(hostline), "%s\n", host);
 		if (write_file("/etc/hostname", hostline, 0644) != 0)
+		{
+			fprintf(stderr, "firstboot: cannot write /etc/hostname\n");
 			return -1;
+		}
 	}
 
 	if (lock_root)
@@ -205,20 +229,29 @@ static int write_accounts(const char *user, const char *host, const char *hash,
 		(void)unlink(RECOVERY_FLAG);
 
 	(void)unlink("/etc/ir0-autologin");
-	return mark_done();
+	if (mark_done() != 0)
+	{
+		fprintf(stderr, "firstboot: cannot write done marker\n");
+		return -1;
+	}
+	return 0;
 }
 
 static int seed_development(void)
 {
-	puts("\n*** IR0 Development profile — NOT for production ***\n"
+	puts("\n*** IR0 Development profile -- NOT for production ***\n"
 	     "root autologin / empty password allowed (labuser fixture).\n");
+	if (write_file("/etc/ir0-autologin", "root\n", 0644) != 0)
+		return -1;
 	if (write_accounts("labuser", "ir0", "", 1, 0, 1) != 0)
 		return -1;
-	(void)write_file("/etc/ir0-autologin", "root\n", 0644);
-	(void)write_file("/etc/shadow",
-			 "root::0:0:99999:7:::\n"
-			 "labuser::0:0:99999:7:::\n",
-			 0600);
+	if (write_file("/etc/ir0-autologin", "root\n", 0644) != 0)
+		return -1;
+	if (write_file("/etc/shadow",
+		       "root::0:0:99999:7:::\n"
+		       "labuser::0:0:99999:7:::\n",
+		       0600) != 0)
+		return -1;
 	return 0;
 }
 
@@ -281,7 +314,8 @@ static int apply_seed_file(const char *path)
 	fclose(f);
 	if (!valid_username(user) || hash[0] == '\0')
 	{
-		fprintf(stderr, "firstboot: invalid FIRSTBOOT_SEED (need username + password_hash)\n");
+		fprintf(stderr,
+			"firstboot: invalid FIRSTBOOT_SEED (need username + password_hash)\n");
 		return -1;
 	}
 	return write_accounts(user, host, hash, wheel, lock_root, recovery);
@@ -294,16 +328,14 @@ static int wizard_interactive(void)
 	char pw1[IR0_AUTH_HASH_MAX];
 	char pw2[IR0_AUTH_HASH_MAX];
 	char hash[IR0_AUTH_HASH_MAX];
-	int wheel;
-	int lock_root;
-	int recovery;
 
 	puts("\nWelcome to IR0/Unix\n");
-	puts("Create the first IR0/Unix user\n");
+	puts("Create your account on first boot.");
+	puts("This password is also used for admin tasks via doas.\n");
 
 	for (;;)
 	{
-		printf("Username: ");
+		printf("Enter your Unix username: ");
 		fflush(stdout);
 		if (ir0_read_line(user, sizeof(user), 1) != 0 || user[0] == '\0')
 		{
@@ -329,10 +361,12 @@ static int wizard_interactive(void)
 		fflush(stdout);
 		(void)ir0_read_line(pw1, sizeof(pw1), 0);
 		puts("");
+		(void)ir0_tty_restore_cooked();
 		printf("Confirm password: ");
 		fflush(stdout);
 		(void)ir0_read_line(pw2, sizeof(pw2), 0);
 		puts("");
+		(void)ir0_tty_restore_cooked();
 		if (strcmp(pw1, pw2) == 0 && pw1[0] != '\0')
 			break;
 		puts("Passwords empty or do not match; try again.");
@@ -340,26 +374,42 @@ static int wizard_interactive(void)
 		ir0_wipe(pw2, sizeof(pw2));
 	}
 
-	wheel = prompt_yes_no("Grant administrative privileges (wheel)?", 1);
-	lock_root = prompt_yes_no("Disable direct root login?", 1);
-	recovery = prompt_yes_no("Enable local recovery mode?", 1);
-
 	if (ir0_password_hash(pw1, hash, sizeof(hash)) != 0)
 	{
 		ir0_wipe(pw1, sizeof(pw1));
 		ir0_wipe(pw2, sizeof(pw2));
+		(void)ir0_tty_restore_cooked();
+		fprintf(stderr, "firstboot: password hash failed\n");
 		return -1;
 	}
 	ir0_wipe(pw1, sizeof(pw1));
 	ir0_wipe(pw2, sizeof(pw2));
-	return write_accounts(user, host, hash, wheel, lock_root, recovery);
+	(void)ir0_tty_restore_cooked();
+
+	if (write_accounts(user, host, hash, 1, 1, 1) != 0)
+		return -1;
+
+	printf("\nAccount '%s' created. You can log in now.\n", user);
+	printf("Admin: doas <command> (same password).\n\n");
+	return 0;
 }
 
-int main(void)
+int main(int argc, char **argv)
 {
 	enum ir0_product_profile profile;
 	int interactive;
+	int early = 0;
+	int wizard = 0;
 	const char *seed;
+	int i;
+
+	for (i = 1; i < argc; i++)
+	{
+		if (strcmp(argv[i], "--early") == 0)
+			early = 1;
+		else if (strcmp(argv[i], "--wizard") == 0)
+			wizard = 1;
+	}
 
 	if (already_done())
 	{
@@ -367,9 +417,20 @@ int main(void)
 		return 0;
 	}
 
+	/*
+	 * Stage1 uses --early (no console steal, never interactive).
+	 * Console getty uses --wizard after attaching /dev/console.
+	 */
+	if (!early)
+		try_attach_console();
+
 	profile = ir0_read_profile();
 	interactive = isatty(0) && isatty(1);
 	seed = getenv(SEED_ENV);
+	if ((!seed || !seed[0]) && path_is_reg(SEED_FILE_ETC))
+		seed = SEED_FILE_ETC;
+	else if ((!seed || !seed[0]) && path_is_reg(SEED_FILE_ETC_LEGACY))
+		seed = SEED_FILE_ETC_LEGACY;
 
 	if (profile == PROFILE_DEVELOPMENT)
 	{
@@ -381,6 +442,7 @@ int main(void)
 		else if (seed_development() != 0)
 			goto fail;
 		ir0_smoke_tag("FIRSTBOOT_DEV_OK\n");
+		(void)ir0_tty_restore_cooked();
 		return 0;
 	}
 	if (profile == PROFILE_APPLIANCE)
@@ -396,14 +458,26 @@ int main(void)
 	{
 		if (apply_seed_file(seed) != 0)
 			goto fail;
+		(void)unlink(SEED_FILE_ETC);
+		(void)unlink(SEED_FILE_ETC_LEGACY);
 		ir0_smoke_tag("FIRSTBOOT_OK\n");
+		(void)ir0_tty_restore_cooked();
 		return 0;
 	}
-	if (interactive)
+
+	if (early)
+	{
+		/* Leave pending for the console wizard — do not prompt here. */
+		ir0_smoke_tag("FIRSTBOOT_PENDING\n");
+		return 0;
+	}
+
+	if (wizard || interactive)
 	{
 		if (wizard_interactive() != 0)
 			goto fail;
 		ir0_smoke_tag("FIRSTBOOT_OK\n");
+		(void)ir0_tty_restore_cooked();
 		return 0;
 	}
 
@@ -414,6 +488,7 @@ int main(void)
 	return 0;
 
 fail:
+	(void)ir0_tty_restore_cooked();
 	ir0_smoke_tag("FIRSTBOOT_FAIL\n");
 	return 1;
 }

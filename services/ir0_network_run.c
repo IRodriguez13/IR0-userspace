@@ -35,8 +35,15 @@ static void load_mode(char *mode, size_t n)
 	{
 		if (strncmp(line, "NETWORK_MODE=", 13) == 0)
 		{
-			snprintf(mode, n, "%s", line + 13);
-			mode[strcspn(mode, "\r\n")] = '\0';
+			char *v = line + 13;
+			size_t len;
+
+			v[strcspn(v, "\r\n")] = '\0';
+			len = strlen(v);
+			if (len >= n)
+				len = n - 1;
+			memcpy(mode, v, len);
+			mode[len] = '\0';
 			break;
 		}
 		if (strstr(line, "inet dhcp"))

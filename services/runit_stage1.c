@@ -54,6 +54,25 @@ static void run_helper(const char *path)
 	(void)waitpid(pid, &status, 0);
 }
 
+/* Non-interactive firstboot only — wizard runs later on the console TTY. */
+static void run_firstboot_early(void)
+{
+	pid_t pid;
+	int status;
+
+	pid = fork();
+	if (pid < 0)
+		return;
+	if (pid == 0)
+	{
+		char *const argv[] = { "/sbin/ir0-firstboot", "--early", NULL };
+
+		execv(argv[0], argv);
+		_exit(127);
+	}
+	(void)waitpid(pid, &status, 0);
+}
+
 static int want_fsck(void)
 {
 	/* Skip unconditional fsck when the profile opts out. */
@@ -67,7 +86,7 @@ int main(void)
 
 	if (want_fsck())
 		run_helper("/sbin/fsck.ir0");
-	run_helper("/sbin/ir0-firstboot");
+	run_firstboot_early();
 
 	ir0_smoke_tag("RUNIT_STAGE1_OK\n");
 

@@ -94,11 +94,13 @@ build-tests:
 
 # Legacy paths expected by the kernel tree (symlinks into out/<arch>/product).
 compat-links:
-	@mkdir -p out
+	@mkdir -p out "$(SMOKE_OUT)" "$(TESTS_OUT)"
 	@ln -sfn "$(PRODUCT_OUT)/busybox-full" out/busybox-full
 	@ln -sfn "$(PRODUCT_OUT)/busybox-auth" out/busybox-auth
 	@ln -sfn "$(PRODUCT_OUT)/bin" out/bin
 	@ln -sfn "$(PRODUCT_OUT)/stage-bin" out/stage-bin
+	@ln -sfn "$(SMOKE_OUT)" out/smoke
+	@ln -sfn "$(PRODUCT_OUT)" out/product
 
 toolchain-check:
 	@chmod +x scripts/toolchain.sh
