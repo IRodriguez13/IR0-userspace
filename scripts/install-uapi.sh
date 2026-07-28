@@ -20,7 +20,8 @@ elif [ -d "${DEST}/usr/include" ] && [ -n "$(find "${DEST}/usr/include" -name '*
 	echo "  UAPI    using existing $DEST"
 elif [ -f "${IR0_ROOT}/Makefile" ]; then
 	echo "  UAPI    headers_install from IR0_ROOT=$IR0_ROOT"
-	make -s -C "$IR0_ROOT" headers_install DESTDIR="$DEST"
+	# Drop inherited ARCH=x86_64 from ISD Make — IR0 headers_install is arch-agnostic.
+	env -u ARCH make -C "$IR0_ROOT" headers_install DESTDIR="$DEST"
 else
 	echo "✗ no UAPI source: set IR0_ROOT, IR0_UAPI_TARBALL, or prefill IR0_UAPI_SYSROOT" >&2
 	exit 1

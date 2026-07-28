@@ -1,12 +1,14 @@
 # Build output and imported artifacts — never versioned.
 /out/
 /sysroot/
+.isdconfig
 packages/*/src/
 packages/*/dist/
 packages/*/build-*/
 packages/*/.build-*.lock
 packages/*/.linux-uapi/
 packages/*/configure-*.log
+packages/*/sysdeps*.log
 *.img
 *.stamp
 *.o

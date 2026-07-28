@@ -136,6 +136,8 @@ if [ ! -f "$MANIFEST" ]; then
 fi
 while read -r ap; do
 	[[ "$ap" =~ ^#.*$ || -z "$ap" ]] && continue
+	# Skip same-file link when the applet name is busybox itself.
+	[ "$ap" = "busybox" ] && continue
 	ln -f "${DEST}/bin/busybox" "${DEST}/bin/${ap}"
 done < "$MANIFEST"
 
@@ -151,13 +153,23 @@ while read -r svc; do
 	ln -sfr "${DEST}/etc/runit/sv/${svc}" "${DEST}/etc/service/${svc}"
 done < "${PROF_DIR}/services.txt"
 
-# Optional packages
-if [ "${INSTALL_DOAS:-0}" = "1" ] && [ -f "${STAGE_BIN}/doas" ]; then
+# Optional packages: ISD_PACKAGES_MANIFEST (resolved set) wins; legacy
+# INSTALL_* from profile.conf remains a fallback. Binary must exist.
+manifest_has() {
+	local name="$1"
+	[ -n "${ISD_PACKAGES_MANIFEST:-}" ] || return 1
+	case " ${ISD_PACKAGES_MANIFEST} " in
+	*" ${name} "*) return 0 ;;
+	*) return 1 ;;
+	esac
+}
+
+if [ -f "${STAGE_BIN}/doas" ] && { manifest_has opendoas || [ "${INSTALL_DOAS:-0}" = "1" ]; }; then
 	install -m 04755 "${STAGE_BIN}/doas" "${DEST}/usr/bin/doas"
 	install -m 0440 "${ROOT}/rootfs/base/etc/doas.conf" "${DEST}/etc/doas.conf" 2>/dev/null || \
 		install -m 0440 "${ROOT}/rootfs/etc/doas.conf" "${DEST}/etc/doas.conf"
 fi
-if [ "${INSTALL_NANO:-0}" = "1" ] && [ -f "${STAGE_BIN}/nano" ]; then
+if [ -f "${STAGE_BIN}/nano" ] && { manifest_has nano || [ "${INSTALL_NANO:-0}" = "1" ]; }; then
 	install -m 0755 "${STAGE_BIN}/nano" "${DEST}/usr/bin/nano"
 fi
 
