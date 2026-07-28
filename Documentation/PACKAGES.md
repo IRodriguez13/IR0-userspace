@@ -9,7 +9,7 @@
 | Layer | File | Role |
 |-------|------|------|
 | Profile mandatory set | `profiles/<profile>/packages.txt` | Packages always built/installed for that profile |
-| Extras | `.isdconfig` (`CONFIG_PKG_*=y`) | Optional adds (gitignored); `make isdconfig` / `isd-defconfig` |
+| Extras | `.isdconfig` (`CONFIG_PKG_*`, `CONFIG_APPLET_*`) | Optional packages + BusyBox applet links; `make isdconfig` (interactive) / `isd-defconfig` |
 | Core | busybox + runit | Always on; cannot disable |
 | Policy only | `profiles/<profile>/profile.conf` | Login/root/fsck/network — **not** package truth |
 
@@ -22,7 +22,9 @@ core (busybox runit)
   + auto-dep nano → ncurses
 ```
 
-Each resolved name must have `packages/<name>/build.sh`.
+Applets: profile `applets.txt` plus `.isdconfig` `CONFIG_APPLET_*=y` (e.g. `CONFIG_APPLET_TOP=y` → `/bin/top`). BusyBox must include the applet (`CONFIG_TOP=y` in `packages/busybox/ir0_full.config`).
+
+`profiles/*/packages.txt` is lean (busybox+runit). Common extras default to **y** in `isd-defconfig` (nano, ncurses, opendoas, top).
 
 ## Stamp layout
 

@@ -59,12 +59,17 @@ make rootfs-tree PROFILE=minimal
 make image-minix PROFILE=minimal   # → out/x86_64/images/minimal/disk.img
 ```
 
-Extras (optional packages beyond `profiles/<p>/packages.txt`):
+Extras (interactive — packages + BusyBox applets such as `top`):
 
 ```bash
 make isdconfig PROFILE=minimal
-# or: python3 scripts/isdconfig.py set CONFIG_PKG_NANO=y
+# or non-interactive:
+#   python3 scripts/isdconfig.py set CONFIG_PKG_NANO=y
+#   python3 scripts/isdconfig.py set CONFIG_APPLET_TOP=y
+make isd-image PROFILE=minimal   # apply after changing .isdconfig
 ```
+
+`profiles/*/packages.txt` is lean (busybox+runit). Defconfig enables nano, ncurses, opendoas, and applet `top` by default.
 
 ## Profiles
 

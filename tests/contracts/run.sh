@@ -52,9 +52,24 @@ got2=$(PROFILE=appliance ISD_CONFIG="$CFG2" bash scripts/resolve-packages.sh)
 echo " $got2 " | grep -q ' nano ' && echo " $got2 " | grep -q ' ncurses ' \
 	&& ok "B resolve nano+ncurses" || bad "B resolve missing nano/ncurses: $got2"
 
+# packages.txt is lean (core only); extras come from .isdconfig defaults.
 min=$(PROFILE=minimal bash scripts/resolve-packages.sh)
-echo " $min " | grep -q ' opendoas ' && echo " $min " | grep -q ' nano ' \
-	&& ok "B minimal packages.txt set" || bad "B minimal resolve: $min"
+echo " $min " | grep -q ' busybox ' && echo " $min " | grep -q ' runit ' \
+	&& ! echo " $min " | grep -q ' opendoas ' \
+	&& ok "B minimal packages.txt core-only" || bad "B minimal resolve: $min"
+
+CFG3="$TMP/isdconfig-b3"
+PROFILE=minimal ISD_CONFIG="$CFG3" python3 scripts/isdconfig.py --config "$CFG3" defconfig --force
+got3=$(PROFILE=minimal ISD_CONFIG="$CFG3" bash scripts/resolve-packages.sh)
+echo " $got3 " | grep -q ' opendoas ' && echo " $got3 " | grep -q ' nano ' \
+	&& ok "B defconfig seeds OPENDOAS+NANO" || bad "B defconfig resolve: $got3"
+grep -q 'CONFIG_APPLET_TOP=y' "$CFG3" && ok "B defconfig seeds APPLET_TOP" \
+	|| bad "B no APPLET_TOP in defconfig"
+
+PROFILE=minimal ISD_CONFIG="$CFG3" python3 scripts/isdconfig.py --config "$CFG3" \
+	set CONFIG_APPLET_TOP=n
+grep -q 'CONFIG_APPLET_TOP=n' "$CFG3" && ok "B set CONFIG_APPLET_TOP=n" \
+	|| bad "B applet set failed"
 
 # --- C: overlay independence (.keep trees present; Makefile find deps) -------
 echo "-- C overlays --"
@@ -67,8 +82,10 @@ done
 grep -q 'ROOTFS_FIND_DIRS' Makefile && grep -q 'find \$(ROOTFS_FIND_DIRS)' Makefile \
 	&& ok "C rootfs stamp find deps" || bad "C Makefile missing find deps"
 grep -q 'ISD_PACKAGES_MANIFEST' scripts/stage-rootfs.sh && ok "C stage uses manifest" || bad "C no manifest"
-grep -q '\[ "\$ap" = "busybox" \]' scripts/stage-rootfs.sh \
+grep -q '\[ "\$ap" = "busybox" \] && return 0' scripts/stage-rootfs.sh \
 	&& ok "C skip busybox self-link" || bad "C no busybox skip"
+grep -q 'CONFIG_APPLET_' scripts/stage-rootfs.sh \
+	&& ok "C stage links CONFIG_APPLET_*" || bad "C no applet config links"
 
 # --- D: TINYCC / DOOM reject -------------------------------------------------
 echo "-- D future packages --"

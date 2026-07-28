@@ -134,12 +134,36 @@ MANIFEST="${PROF_DIR}/applets.txt"
 if [ ! -f "$MANIFEST" ]; then
 	MANIFEST="${ROOT}/packages/busybox/required_applets.txt"
 fi
+link_applet() {
+	local ap="$1"
+	[ -n "$ap" ] || return 0
+	[ "$ap" = "busybox" ] && return 0
+	if ! "${DEST}/bin/busybox" --list 2>/dev/null | grep -qx "$ap"; then
+		echo "✗ applet '$ap' not in busybox-full — rebuild packages/busybox" >&2
+		return 1
+	fi
+	ln -f "${DEST}/bin/busybox" "${DEST}/bin/${ap}"
+}
 while read -r ap; do
 	[[ "$ap" =~ ^#.*$ || -z "$ap" ]] && continue
-	# Skip same-file link when the applet name is busybox itself.
-	[ "$ap" = "busybox" ] && continue
-	ln -f "${DEST}/bin/busybox" "${DEST}/bin/${ap}"
+	link_applet "$ap" || exit 1
 done < "$MANIFEST"
+
+# Optional applets from .isdconfig (CONFIG_APPLET_*=y)
+ISD_CFG="${ISD_CONFIG:-${ROOT}/.isdconfig}"
+if [ -f "$ISD_CFG" ]; then
+	while IFS= read -r line || [ -n "${line:-}" ]; do
+		[[ "$line" =~ ^#.*$ || -z "$line" ]] && continue
+		case "$line" in
+		CONFIG_APPLET_*=y|CONFIG_APPLET_*=Y)
+			key="${line%%=*}"
+			name="${key#CONFIG_APPLET_}"
+			ap="$(echo "$name" | tr '[:upper:]' '[:lower:]')"
+			link_applet "$ap" || exit 1
+			;;
+		esac
+	done <"$ISD_CFG"
+fi
 
 install -m 0755 "$STAGE_BIN/runit_stage1" "${DEST}/etc/runit/1"
 install -m 0755 "$STAGE_BIN/runit_stage2" "${DEST}/etc/runit/2"

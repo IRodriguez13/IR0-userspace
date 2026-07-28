@@ -45,6 +45,7 @@ ROOTFS_INPUTS := \
 	profiles/$(PROFILE)/packages.txt \
 	profiles/$(PROFILE)/services.txt \
 	profiles/$(PROFILE)/applets.txt \
+	$(wildcard .isdconfig) \
 	$(shell find $(ROOTFS_FIND_DIRS) -type f 2>/dev/null)
 
 .PHONY: all fetch headers build build-packages build-services build-tests \
@@ -80,7 +81,6 @@ isd-defconfig:
 isdconfig:
 	@chmod +x scripts/isdconfig.py
 	@PROFILE=$(PROFILE) python3 scripts/isdconfig.py menu
-	@PROFILE=$(PROFILE) python3 scripts/isdconfig.py show
 
 validate-config:
 	@chmod +x scripts/isdconfig.py scripts/resolve-packages.sh
