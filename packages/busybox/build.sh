@@ -27,9 +27,32 @@ build_variant()
 
 	echo "  BUSYBOX Building $(basename "$out") ARCH=${ARCH}"
 	"${ROOT}/scripts/busybox_apply_fragment.sh" "$SRC" "$fragment"
+	# Musl sysroot lacks linux/*.h; expose host UAPI after musl (idirafter)
+	# so bits/ioctl.h wins over asm-generic/ioctl.h.
+	local uapi="${PKG}/.linux-uapi"
+	rm -rf "$uapi"
+	mkdir -p "$uapi"
+	if [ -d /usr/include/linux ]; then
+		ln -sfn /usr/include/linux "${uapi}/linux"
+	fi
+	if [ -d /usr/include/asm-generic ]; then
+		ln -sfn /usr/include/asm-generic "${uapi}/asm-generic"
+	fi
+	if [ -d /usr/include/x86_64-linux-gnu/asm ]; then
+		ln -sfn /usr/include/x86_64-linux-gnu/asm "${uapi}/asm"
+	elif [ -d /usr/include/asm ]; then
+		ln -sfn /usr/include/asm "${uapi}/asm"
+	else
+		mkdir -p "${uapi}/asm"
+		printf '%s\n' '#pragma once' '#include <asm-generic/types.h>' \
+			> "${uapi}/asm/types.h"
+	fi
+	if [ -d /usr/include/mtd ]; then
+		ln -sfn /usr/include/mtd "${uapi}/mtd"
+	fi
 	# Upstream BusyBox emits -Wunused-result / -Wformat-security noise (target
 	# and host helpers like applets/usage); keep our tree log clean.
-	local bb_cflags="-fno-pie -Wno-unused-result -Wno-format-security"
+	local bb_cflags="-fno-pie -Wno-unused-result -Wno-format-security -idirafter ${uapi}"
 	local bb_hostcflags="-Wno-unused-result -Wno-format-security"
 	make -C "$SRC" CC="$CC" -s clean >/dev/null 2>&1 || true
 	make -C "$SRC" CC="$CC" CFLAGS="$bb_cflags" HOSTCFLAGS="$bb_hostcflags" \

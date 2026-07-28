@@ -11,15 +11,12 @@ sh		supported	make smoke-fase58e-ash-interactive
 ash		supported	make smoke-fase58e-ash-interactive
 login		unverified	privileged binary (busybox-auth), console login is ir0 getty
 su		unverified	privileged binary (busybox-auth), no gate yet
-df		unavailable	mount-table walk hangs on MINIX (no gate yet)
-mount		partial	needs remount/MS_RDONLY recovery gate
-umount		unverified	paired with mount remount gate
-free		unverified	hung guest after heavy fork pressure in matrix
-tty		unverified	hung guest after heavy fork pressure in matrix
-dmesg		unverified	deferred from matrix (fork pressure)
-tar		unverified	deferred from matrix (fork pressure)
-gzip		unverified	deferred from matrix (fork pressure)
-gunzip		unverified	deferred from matrix (fork pressure)
-pidof		unverified	deferred from matrix (fork pressure)
-nice		unverified	deferred from matrix (fork pressure)
-time		unverified	deferred from matrix (fork pressure)
+# Bracket applets: --help is not a long-opt path (args look like test expr).
+[		supported	alias of test (BUSY-2 / host smoke)
+[[		supported	ash [[ / test family
+false		supported	coreutils (BUSY-2 matrix)
+# df: kernel sys_statfs + MINIX free-zone count (was hang / ENOSYS).
+# Guest matrix may mark partial if header needle drifts; host-help fills.
+df		supported	sys_statfs (MINIX free zones) + busybox-matrix
+mount		supported	busybox-matrix (list /proc/mounts)
+umount		supported	host-help + paired with mount

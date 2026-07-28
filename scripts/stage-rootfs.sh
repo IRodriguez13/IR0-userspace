@@ -63,6 +63,8 @@ mkdir -p \
 	"${DEST}/etc" "${DEST}/dev" "${DEST}/proc" "${DEST}/sys" "${DEST}/heart" \
 	"${DEST}/run" "${DEST}/run/doas" "${DEST}/tmp" "${DEST}/var/log" "${DEST}/var/lib/ir0" \
 	"${DEST}/home" "${DEST}/root" "${DEST}/mnt" \
+	"${DEST}/usr/ken" "${DEST}/usr/ken/games" "${DEST}/usr/share/doom" \
+	"${DEST}/usr/share/man" "${DEST}/usr/share/man/cat7" \
 	"${DEST}/etc/runit/sv/console" "${DEST}/etc/runit/sv/logger" \
 	"${DEST}/etc/service" "${DEST}/etc/skel" \
 	"${DEST}/usr/lib/ir0/defaults" "${DEST}/etc/network"
@@ -193,6 +195,10 @@ if [ -f "${ROOT}/packages/busybox/bb_status.tsv" ]; then
 	install -m 0644 "${ROOT}/packages/busybox/bb_status.tsv" \
 		"${DEST}/etc/busybox/bb_status.tsv"
 fi
+
+# BusyBox FEATURE_MTAB_SUPPORT uses /etc/mtab; without it, df/mount use /proc/mounts.
+# Symlink keeps both paths consistent for applets that still open /etc/mtab.
+ln -sfn /proc/mounts "${DEST}/etc/mtab"
 
 # Optional guest mandocs (host prepare-guest-mandocs → build/guest-man/usr/share/man/cat7)
 if [ -n "${IR0_GUEST_MANDOC_DIR:-}" ]; then

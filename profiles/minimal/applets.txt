@@ -61,3 +61,5 @@ poweroff
 man
 less
 more
+vi
+which
