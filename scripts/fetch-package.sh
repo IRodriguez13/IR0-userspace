@@ -27,8 +27,18 @@ if [ ! -f "$PKG/dist/$TARBALL" ]; then
 	curl -fsSL "$URL" -o "$PKG/dist/$TARBALL"
 fi
 
-( cd "$PKG/dist" && sha256sum -c "$PKG/sha256" >/dev/null )
+( cd "$PKG/dist" && \
+	if command -v sha256sum >/dev/null 2>&1; then
+		sha256sum -c "$PKG/sha256" >/dev/null
+	elif command -v shasum >/dev/null 2>&1; then
+		# macOS/some BSDs — accept if present on exotic hosts
+		awk '{print $1"  "$2}' "$PKG/sha256" | shasum -a 256 -c >/dev/null
+	else
+		echo "✗ need sha256sum (or shasum) to verify $NAME" >&2
+		exit 1
+	fi )
 echo "  FETCH   $NAME checksum OK"
+
 
 if [ -d "$PKG/src" ]; then
 	echo "  FETCH   $NAME already unpacked (packages/$NAME/src)"
