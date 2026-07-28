@@ -5,6 +5,7 @@ packages/*/src/
 packages/*/dist/
 packages/*/build-*/
 packages/*/.build-*.lock
+packages/*/.linux-uapi/
 packages/*/configure-*.log
 *.img
 *.stamp

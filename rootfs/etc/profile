@@ -17,3 +17,9 @@ root)
 	;;
 esac
 export PS1 HOSTNAME USER
+
+# Dennis Ritchie nod: host IR0 tree via virtio-9p (make run: mount_tag=dennis).
+# Offline disk keeps short-name samples under the same path until mounted.
+if [ -d /heart/dennis/src ]; then
+	mount -t 9p dennis /heart/dennis/src 2>/dev/null || true
+fi

@@ -14,6 +14,7 @@
 
 #include <stdio.h>
 #include <string.h>
+#include <sys/mount.h>
 #include <sys/wait.h>
 #include <unistd.h>
 
@@ -79,6 +80,20 @@ static int want_fsck(void)
 	return access("/etc/ir0-skip-fsck", F_OK) != 0;
 }
 
+/*
+ * Host IR0 tree via virtio-9p (QEMU mount_tag=dennis). Must run as root
+ * in stage1 — login shells are non-root and mount(2) returns EPERM.
+ */
+static void try_mount_dennis_src(void)
+{
+	if (access("/heart/dennis/src", F_OK) != 0)
+		return;
+	if (mount("dennis", "/heart/dennis/src", "9p", 0, NULL) == 0)
+		ir0_smoke_tag("DENNIS_9P_MOUNT_OK\n");
+	else
+		ir0_smoke_tag("DENNIS_9P_MOUNT_SKIP\n");
+}
+
 int main(void)
 {
 	char *const argv2[] = { "/etc/runit/2", NULL };
@@ -87,6 +102,7 @@ int main(void)
 	if (want_fsck())
 		run_helper("/sbin/fsck.ir0");
 	run_firstboot_early();
+	try_mount_dennis_src();
 
 	ir0_smoke_tag("RUNIT_STAGE1_OK\n");
 

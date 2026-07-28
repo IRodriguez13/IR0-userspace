@@ -113,11 +113,26 @@ $INJECT "$DISK" --mode 0600 "${TREE}/etc/shadow" etc/shadow
 
 # Guest man pages (pre-rendered ASCII cat7)
 if [ -d "${TREE}/usr/share/man/cat7" ]; then
-	for page in "${TREE}/usr/share/man/cat7"/IR0-*.7; do
+	for page in "${TREE}/usr/share/man/cat7"/*.7; do
 		[ -f "$page" ] || continue
 		base="$(basename "$page")"
+		# MINIX v1 name length ≤14 including extension
 		$INJECT "$DISK" --mode 0644 "$page" "usr/share/man/cat7/${base}"
 	done
+fi
+
+VERIFY_EXTRA=()
+[ -f "${TREE}/usr/bin/nano" ] && VERIFY_EXTRA+=(/usr/bin/nano)
+[ -f "${TREE}/usr/bin/doas" ] && VERIFY_EXTRA+=(/usr/bin/doas)
+
+# Optional Ken games (usually injected post-pack by IR0 install-ken-games)
+if [ -f "${TREE}/usr/ken/games/doom" ]; then
+	$INJECT "$DISK" --mode 0755 "${TREE}/usr/ken/games/doom" usr/ken/games/doom
+	$INJECT "$DISK" --mode 0755 "${TREE}/usr/ken/games/doom" usr/bin/doom
+	VERIFY_EXTRA+=(/usr/ken/games/doom /usr/bin/doom)
+fi
+if [ -f "${TREE}/usr/ken/games/doom1.wad" ]; then
+	$INJECT "$DISK" --mode 0644 "${TREE}/usr/ken/games/doom1.wad" usr/ken/games/doom1.wad
 fi
 
 # Homes
@@ -132,10 +147,6 @@ if [ -d "${TREE}/home/labuser" ]; then
 		"${TREE}/home/labuser/.keep" home/labuser/.keep
 	$INJECT --owner 1000:100 --mode 0700 --chown "$DISK" home/labuser
 fi
-
-VERIFY_EXTRA=()
-[ -f "${TREE}/usr/bin/nano" ] && VERIFY_EXTRA+=(/usr/bin/nano)
-[ -f "${TREE}/usr/bin/doas" ] && VERIFY_EXTRA+=(/usr/bin/doas)
 
 python3 "${IR0_ROOT}/scripts/verify_minix_rootfs.py" --gate "$DISK" \
 	/sbin/init /sbin/runit /bin/runsvdir /bin/sh /bin/busybox \

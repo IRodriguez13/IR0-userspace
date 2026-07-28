@@ -17,3 +17,9 @@ root)
 	;;
 esac
 export PS1 HOSTNAME USER
+
+# Dennis: stage1 mounts virtio-9p tag "dennis" on /heart/dennis/src (as root).
+# Login profile keeps a no-op fallback for root shells if stage1 skipped it.
+if [ -d /heart/dennis/src ] && [ "$(id -u 2>/dev/null)" = "0" ]; then
+	mount -t 9p dennis /heart/dennis/src 2>/dev/null || true
+fi
