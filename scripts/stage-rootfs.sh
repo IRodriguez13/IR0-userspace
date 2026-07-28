@@ -196,6 +196,29 @@ fi
 if [ -f "${STAGE_BIN}/nano" ] && { manifest_has nano || [ "${INSTALL_NANO:-0}" = "1" ]; }; then
 	install -m 0755 "${STAGE_BIN}/nano" "${DEST}/usr/bin/nano"
 fi
+if [ -f "${STAGE_BIN}/make" ] && manifest_has gnumake; then
+	install -m 0755 "${STAGE_BIN}/make" "${DEST}/usr/bin/make"
+	ln -sf ../usr/bin/make "${DEST}/bin/make"
+fi
+if manifest_has tinycc; then
+	TCC_RT="${PRODUCT_OUT}/tcc-runtime"
+	if [ -x "${STAGE_BIN}/tcc" ]; then
+		install -m 0755 "${STAGE_BIN}/tcc" "${DEST}/usr/bin/tcc"
+		ln -sf ../usr/bin/tcc "${DEST}/bin/tcc"
+	fi
+	if [ -d "${TCC_RT}/lib/tcc" ]; then
+		mkdir -p "${DEST}/lib/tcc"
+		cp -a "${TCC_RT}/lib/tcc/." "${DEST}/lib/tcc/"
+	fi
+	if [ -d "${TCC_RT}/usr/lib" ]; then
+		mkdir -p "${DEST}/usr/lib"
+		cp -a "${TCC_RT}/usr/lib/." "${DEST}/usr/lib/"
+	fi
+	if [ -d "${TCC_RT}/usr/include" ]; then
+		mkdir -p "${DEST}/usr/include"
+		cp -a "${TCC_RT}/usr/include/." "${DEST}/usr/include/"
+	fi
+fi
 
 # Account policy by profile
 case "$PROFILE" in

@@ -40,6 +40,8 @@ cfg_val() {
 }
 
 # Map CONFIG_PKG_FOO=y → package directory name.
+# Skip names without packages/<name>/build.sh (warn; do not fail) so a stale
+# .isdconfig with TINYCC=y cannot wedge first-boot.
 if [ -f "$CFG" ]; then
 	while IFS= read -r line || [ -n "${line:-}" ]; do
 		[[ "$line" =~ ^#.*$ || -z "$line" ]] && continue
@@ -48,6 +50,10 @@ if [ -f "$CFG" ]; then
 			key="${line%%=*}"
 			name="${key#CONFIG_PKG_}"
 			pkg="$(echo "$name" | tr '[:upper:]' '[:lower:]')"
+			if [ ! -f "${ROOT}/packages/${pkg}/build.sh" ]; then
+				echo "⚠ resolve-packages: skip CONFIG_PKG_${name}=y (packages/${pkg}/ missing)" >&2
+				continue
+			fi
 			add "$pkg"
 			;;
 		esac
@@ -59,20 +65,13 @@ if [ -n "${WANT[nano]:-}" ]; then
 	add ncurses
 fi
 
-# Validate recipe dirs exist.
-missing=0
+# Drop any mandatory/profile entries that lack a recipe (warn).
 for pkg in "${!WANT[@]}"; do
-	if [ ! -d "${ROOT}/packages/${pkg}" ]; then
-		echo "✗ resolve-packages: packages/${pkg}/ missing (PROFILE=${PROFILE})" >&2
-		missing=1
-	elif [ ! -f "${ROOT}/packages/${pkg}/build.sh" ]; then
-		echo "✗ resolve-packages: packages/${pkg}/build.sh missing" >&2
-		missing=1
+	if [ ! -f "${ROOT}/packages/${pkg}/build.sh" ]; then
+		echo "⚠ resolve-packages: omit ${pkg} (no packages/${pkg}/build.sh)" >&2
+		unset "WANT[$pkg]"
 	fi
 done
-if [ "$missing" -ne 0 ]; then
-	exit 1
-fi
 
 # Stable order: core first, then alpha.
 ordered=()

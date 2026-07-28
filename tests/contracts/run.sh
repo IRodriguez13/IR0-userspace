@@ -52,10 +52,13 @@ got2=$(PROFILE=appliance ISD_CONFIG="$CFG2" bash scripts/resolve-packages.sh)
 echo " $got2 " | grep -q ' nano ' && echo " $got2 " | grep -q ' ncurses ' \
 	&& ok "B resolve nano+ncurses" || bad "B resolve missing nano/ncurses: $got2"
 
-# packages.txt is lean (core only); extras come from .isdconfig defaults.
-min=$(PROFILE=minimal bash scripts/resolve-packages.sh)
+# packages.txt is lean (core only); extras come from .isdconfig — use empty config.
+CFG_EMPTY="$TMP/isdconfig-empty"
+: >"$CFG_EMPTY"
+min=$(PROFILE=minimal ISD_CONFIG="$CFG_EMPTY" bash scripts/resolve-packages.sh)
 echo " $min " | grep -q ' busybox ' && echo " $min " | grep -q ' runit ' \
 	&& ! echo " $min " | grep -q ' opendoas ' \
+	&& ! echo " $min " | grep -q ' gnumake ' \
 	&& ok "B minimal packages.txt core-only" || bad "B minimal resolve: $min"
 
 CFG3="$TMP/isdconfig-b3"
@@ -87,29 +90,43 @@ grep -q '\[ "\$ap" = "busybox" \] && return 0' scripts/stage-rootfs.sh \
 grep -q 'CONFIG_APPLET_' scripts/stage-rootfs.sh \
 	&& ok "C stage links CONFIG_APPLET_*" || bad "C no applet config links"
 
-# --- D: TINYCC / DOOM reject -------------------------------------------------
-echo "-- D future packages --"
+# --- D: DOOM scrub + tinycc/gnumake ready + clean policy --------------------
+echo "-- D packages / scrub / clean --"
 CFGD="$TMP/isdconfig-d"
 PROFILE=minimal ISD_CONFIG="$CFGD" python3 scripts/isdconfig.py --config "$CFGD" defconfig --force
-# Force-enable TINYCC without going through set() future checks — write raw.
-sed -i 's/CONFIG_PKG_TINYCC=n/CONFIG_PKG_TINYCC=y/' "$CFGD"
+sed -i 's/CONFIG_PKG_DOOM=n/CONFIG_PKG_DOOM=y/' "$CFGD"
 set +e
 out=$(PROFILE=minimal ISD_CONFIG="$CFGD" python3 scripts/isdconfig.py --config "$CFGD" validate 2>&1)
 rc=$?
 set -e
-[ "$rc" -ne 0 ] && echo "$out" | grep -q 'packages/tinycc' \
-	&& ok "D TINYCC rejected" || bad "D TINYCC: rc=$rc out=$out"
+[ "$rc" -eq 0 ] && grep -q 'CONFIG_PKG_DOOM=n' "$CFGD" \
+	&& ok "D DOOM scrubbed to n" || bad "D DOOM: rc=$rc out=$out"
+echo "$out" | grep -qi 'DOOM\|IWAD\|doom' && ok "D DOOM message" || ok "D DOOM scrub silent ok"
 
-CFGD2="$TMP/isdconfig-d2"
-PROFILE=minimal ISD_CONFIG="$CFGD2" python3 scripts/isdconfig.py --config "$CFGD2" defconfig --force
-sed -i 's/CONFIG_PKG_DOOM=n/CONFIG_PKG_DOOM=y/' "$CFGD2"
-set +e
-out=$(PROFILE=minimal ISD_CONFIG="$CFGD2" python3 scripts/isdconfig.py --config "$CFGD2" validate 2>&1)
-rc=$?
-set -e
-[ "$rc" -ne 0 ] && echo "$out" | grep -q 'packages/doom' \
-	&& ok "D DOOM rejected" || bad "D DOOM: rc=$rc out=$out"
-echo "$out" | grep -q 'ISD_DOOM_IWAD\|packages/doom' && ok "D DOOM message" || ok "D DOOM message (pkg)"
+[ -f packages/tinycc/build.sh ] && ok "D packages/tinycc present" || bad "D no tinycc recipe"
+[ -f packages/gnumake/build.sh ] && ok "D packages/gnumake present" || bad "D no gnumake recipe"
+
+CFGT="$TMP/isdconfig-t"
+PROFILE=minimal ISD_CONFIG="$CFGT" python3 scripts/isdconfig.py --config "$CFGT" defconfig --force
+PROFILE=minimal ISD_CONFIG="$CFGT" python3 scripts/isdconfig.py --config "$CFGT" \
+	set CONFIG_PKG_TINYCC=y
+grep -q 'CONFIG_PKG_TINYCC=y' "$CFGT" && ok "D set TINYCC=y kept" || bad "D TINYCC scrubbed wrongly"
+gott=$(PROFILE=minimal ISD_CONFIG="$CFGT" bash scripts/resolve-packages.sh 2>/dev/null)
+echo " $gott " | grep -q ' tinycc ' && ok "D resolve includes tinycc" || bad "D resolve: $gott"
+
+CFGG="$TMP/isdconfig-g"
+PROFILE=minimal ISD_CONFIG="$CFGG" python3 scripts/isdconfig.py --config "$CFGG" defconfig --force
+PROFILE=minimal ISD_CONFIG="$CFGG" python3 scripts/isdconfig.py --config "$CFGG" \
+	set CONFIG_PKG_GNUMAKE=y
+grep -q 'CONFIG_PKG_GNUMAKE=y' "$CFGG" && ok "D set GNUMAKE=y kept" || bad "D GNUMAKE scrubbed wrongly"
+gotg=$(PROFILE=minimal ISD_CONFIG="$CFGG" bash scripts/resolve-packages.sh 2>/dev/null)
+echo " $gotg " | grep -q ' gnumake ' && ok "D resolve includes gnumake" || bad "D resolve: $gotg"
+
+grep -A1 '^clean:' Makefile | grep -q 'rm -rf out' \
+	&& ! grep -A1 '^clean:' Makefile | grep -q 'packages/' \
+	&& ok "D clean only removes out/" || bad "D clean deletes sources"
+grep -A2 '^distclean:' Makefile | grep -q 'packages/\*/src' \
+	&& ok "D distclean may drop src/" || bad "D distclean policy missing"
 
 set +e
 out=$(PROFILE=minimal ISD_CONFIG="$CFGD" python3 scripts/isdconfig.py --config "$CFGD" \

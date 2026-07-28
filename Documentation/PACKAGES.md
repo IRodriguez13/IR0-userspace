@@ -59,9 +59,25 @@ out/<arch>/stamps/
 
 Keep empty overlay dirs with `.keep` so the tree exists in git.
 
+## Packaged extras
+
+| CONFIG | Recipe | Guest install |
+|--------|--------|---------------|
+| `CONFIG_PKG_NANO` | `packages/nano/` | `/usr/bin/nano` (+ auto `ncurses`) |
+| `CONFIG_PKG_NCURSES` | `packages/ncurses/` | (library for nano) |
+| `CONFIG_PKG_OPENDOAS` | `packages/opendoas/` | `/usr/bin/doas` |
+| `CONFIG_PKG_GNUMAKE` | `packages/gnumake/` | `/usr/bin/make`, `/bin/make` |
+| `CONFIG_PKG_TINYCC` | `packages/tinycc/` | `/usr/bin/tcc`, `/lib/tcc/`, musl CRT/headers |
+
+`make fetch` downloads into `packages/<name>/dist` and unpacks to
+`packages/<name>/src` only when missing (safe to re-run offline).
+
+`make clean` removes **`out/` only** (stamps + staged binaries). It never
+deletes `packages/*/src` or `packages/*/dist`. `make distclean` also drops
+unpacked `src/` but keeps downloaded tarballs in `dist/`.
+
 ## Future extras
 
-`CONFIG_PKG_TINYCC`, `CONFIG_PKG_GNUMAKE`, `CONFIG_PKG_DOOM` validate only when
-`packages/<name>/` exists. Doom also requires `ISD_DOOM_IWAD` pointing at a real
-IWAD file. Until packaged, leave them `n` (or use legacy IR0 inject with
-`IR0_LEGACY_USERSPACE=1`).
+`CONFIG_PKG_DOOM` stays off until `packages/doom/` exists. Enabling it in
+`.isdconfig` is scrubbed to `n` on validate (with a warning). Doom will also
+require `ISD_DOOM_IWAD` pointing at a real IWAD file once packaged.

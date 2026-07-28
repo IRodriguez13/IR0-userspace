@@ -66,6 +66,11 @@ help:
 	@echo "           fetch headers build toolchain-check elf-audit"
 	@echo "           rootfs-tree rootfs-tar image-minix image rootfs"
 	@echo "           profiles-check personal-data-check rootfs-check release-check"
+	@echo "           clean distclean"
+	@echo "  fetch:     download missing packages/*/dist + unpack packages/*/src"
+	@echo "             (skips when already present — safe to re-run)"
+	@echo "  clean:     remove out/ only (build artefacts); keeps packages/*/src+dist"
+	@echo "  distclean: clean + delete packages/*/src (keeps downloaded dist/ tarballs)"
 
 check-kernel:
 	@if [ ! -f "$(IR0_ROOT)/scripts/inject_init_minix.py" ]; then \
@@ -78,6 +83,7 @@ isd-defconfig:
 	@chmod +x scripts/isdconfig.py
 	@PROFILE=$(PROFILE) python3 scripts/isdconfig.py defconfig
 
+# Interactive: keep stdin/stdout as the caller's TTY (no /dev/null redirect).
 isdconfig:
 	@chmod +x scripts/isdconfig.py
 	@PROFILE=$(PROFILE) python3 scripts/isdconfig.py menu
@@ -262,10 +268,13 @@ release-check: toolchain-check elf-audit uapi-audit profiles-check \
 	@$(MAKE) -s -C tests/host run
 	@echo "✓ release-check OK PROFILE=$(PROFILE) ARCH=$(ARCH)"
 
+# Build artefacts only. Never delete packages/*/src or packages/*/dist.
 clean:
 	@rm -rf out
-	@echo "✓ clean (out/ removed; sources kept)"
+	@echo "✓ clean (out/ removed; packages/*/src and dist/ kept)"
 
+# Drop unpacked sources too (re-fetch or re-unpack from dist/ next time).
+# Downloaded tarballs under packages/*/dist are preserved.
 distclean: clean
 	@rm -rf $(SYSROOT) packages/*/src
-	@echo "✓ distclean (sources and sysroot removed; dist/ tarballs kept)"
+	@echo "✓ distclean (src/ removed; dist/ tarballs kept)"

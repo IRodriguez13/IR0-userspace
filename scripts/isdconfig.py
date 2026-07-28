@@ -28,10 +28,8 @@ APPLETS: dict[str, str] = {
     "TOP": "top",
 }
 
-# Not yet packaged — require packages/<dir>/ before enabling.
+# Not yet packaged — menu/set refuse =y until packages/<dir>/build.sh exists.
 FUTURE_PACKAGES = {
-    "TINYCC": "tinycc",
-    "GNUMAKE": "gnumake",
     "DOOM": "doom",
 }
 
@@ -124,6 +122,53 @@ def applet_enabled(data: dict[str, str], short: str) -> bool:
     return data.get(f"CONFIG_APPLET_{short}", "n").lower() in ("y", "yes", "1")
 
 
+def pkg_dirname(short: str) -> str:
+    """CONFIG_PKG_FOO → packages/<dir> name."""
+    if short in FUTURE_PACKAGES:
+        return FUTURE_PACKAGES[short]
+    return short.lower()
+
+
+def recipe_ready(short: str) -> bool:
+    d = pkg_dirname(short)
+    return (ROOT / "packages" / d / "build.sh").is_file()
+
+
+def refuse_enable_pkg(short: str) -> str | None:
+    """If short cannot be enabled (=y), return a warning; else None."""
+    if short in FORBIDDEN_DISABLE:
+        return None
+    if short not in EXTRAS:
+        return f"unknown package CONFIG_PKG_{short}"
+    d = pkg_dirname(short)
+    if not recipe_ready(short):
+        return (
+            f"CONFIG_PKG_{short}=y ignored: packages/{d}/ not packaged yet "
+            f"(forced n). Interim: IR0_LEGACY_USERSPACE=1 make load-userspace-devtools"
+        )
+    if short == "DOOM":
+        iwad = os.environ.get("ISD_DOOM_IWAD", "").strip()
+        if not iwad or not Path(iwad).is_file():
+            return (
+                "CONFIG_PKG_DOOM=y ignored: set ISD_DOOM_IWAD to an existing "
+                "IWAD file (forced n)"
+            )
+    return None
+
+
+def scrub_unready_pkgs(data: dict[str, str]) -> list[str]:
+    """Force =n for packages that cannot be built; return warning lines."""
+    warnings: list[str] = []
+    for short in EXTRAS:
+        if not pkg_enabled(data, short):
+            continue
+        msg = refuse_enable_pkg(short)
+        if msg:
+            data[f"CONFIG_PKG_{short}"] = "n"
+            warnings.append(f"⚠ {msg}")
+    return warnings
+
+
 def _normalize_assignment(item: str) -> tuple[str, str, str] | None:
     """Return (kind, short, val) where kind is 'PKG' or 'APPLET'."""
     if "=" not in item:
@@ -196,6 +241,11 @@ def cmd_set(path: Path, assignments: list[str]) -> int:
             if short not in FORBIDDEN_DISABLE and short not in EXTRAS:
                 print(f"✗ unknown package key CONFIG_PKG_{short}", file=sys.stderr)
                 return 1
+            if val == "y":
+                msg = refuse_enable_pkg(short)
+                if msg:
+                    print(f"⚠ {msg}", file=sys.stderr)
+                    val = "n"
             data[key] = val
             if val == "y" and short in AUTO_DEPS:
                 for dep in AUTO_DEPS[short]:
@@ -205,6 +255,8 @@ def cmd_set(path: Path, assignments: list[str]) -> int:
                 print(f"✗ unknown applet key CONFIG_APPLET_{short}", file=sys.stderr)
                 return 1
             data[f"CONFIG_APPLET_{short}"] = val
+    for w in scrub_unready_pkgs(data):
+        print(w, file=sys.stderr)
     write_cfg(path, data)
     print(f"  CONFIG    updated {path}")
     return 0
@@ -213,6 +265,7 @@ def cmd_set(path: Path, assignments: list[str]) -> int:
 def cmd_validate(path: Path, profile: str) -> int:
     data = ensure_defaults(parse_cfg(path))
     errors: list[str] = []
+    changed = False
 
     for short in FORBIDDEN_DISABLE:
         if not pkg_enabled(data, short):
@@ -230,40 +283,25 @@ def cmd_validate(path: Path, profile: str) -> int:
                         f"(auto-dep)."
                     )
 
-    for short, dirname in FUTURE_PACKAGES.items():
+    # Auto-downgrade unready extras so first-boot / validate-config cannot wedge.
+    for w in scrub_unready_pkgs(data):
+        print(w, file=sys.stderr)
+        changed = True
+
+    for short in EXTRAS:
         if not pkg_enabled(data, short):
             continue
+        dirname = pkg_dirname(short)
         pkg_dir = ROOT / "packages" / dirname
         if not pkg_dir.is_dir() or not (pkg_dir / "build.sh").is_file():
             errors.append(
-                f"✗ CONFIG_PKG_{short}=y but packages/{dirname}/ is not packaged yet.\n"
-                f"  Leave CONFIG_PKG_{short}=n, or add packages/{dirname}/ "
-                f"(build.sh + metadata).\n"
-                f"  Interim (legacy IR0 inject): "
-                f"IR0_LEGACY_USERSPACE=1 make load-userspace-devtools"
+                f"✗ CONFIG_PKG_{short}=y but packages/{dirname}/ missing "
+                f"(internal: scrub failed)."
             )
-        if short == "DOOM":
-            iwad = os.environ.get("ISD_DOOM_IWAD", "").strip()
-            if not iwad or not Path(iwad).is_file():
-                errors.append(
-                    "✗ CONFIG_PKG_DOOM=y requires ISD_DOOM_IWAD pointing to an "
-                    "existing IWAD file."
-                )
-
-    for short in EXTRAS:
-        if short in FUTURE_PACKAGES:
-            continue
-        if not pkg_enabled(data, short):
-            continue
-        dirname = short.lower()
-        pkg_dir = ROOT / "packages" / dirname
-        if not pkg_dir.is_dir():
-            errors.append(f"✗ CONFIG_PKG_{short}=y but packages/{dirname}/ missing.")
 
     for short, applet in APPLETS.items():
         if not applet_enabled(data, short):
             continue
-        # Soft check: warn if known busybox config disables TOP (build may lag).
         if short == "TOP":
             frag = ROOT / "packages" / "busybox" / "ir0_full.config"
             if frag.is_file() and "CONFIG_TOP=y" not in frag.read_text(encoding="utf-8"):
@@ -271,6 +309,10 @@ def cmd_validate(path: Path, profile: str) -> int:
                     f"✗ CONFIG_APPLET_TOP=y but packages/busybox/ir0_full.config "
                     f"lacks CONFIG_TOP=y (rebuild busybox after enabling TOP)."
                 )
+
+    if changed and path.is_file():
+        write_cfg(path, data)
+        print(f"  CONFIG    scrubbed unready extras → {path}")
 
     if errors:
         print("\n".join(errors), file=sys.stderr)
@@ -280,12 +322,12 @@ def cmd_validate(path: Path, profile: str) -> int:
     return 0
 
 
-def _prompt_yn(tty, prompt: str, current: str) -> str:
+def _prompt_yn(inp, out, prompt: str, current: str) -> str:
     cur = current.lower() if current.lower() in ("y", "n") else "n"
     while True:
-        tty.write(f"{prompt} [{cur}] ")
-        tty.flush()
-        line = tty.readline()
+        out.write(f"{prompt} [{cur}] ")
+        out.flush()
+        line = inp.readline()
         if not line:
             return cur
         ans = line.strip().lower()
@@ -297,59 +339,121 @@ def _prompt_yn(tty, prompt: str, current: str) -> str:
             return "y"
         if ans in ("no", "false", "0"):
             return "n"
-        tty.write("  enter y or n (empty keeps current)\n")
+        out.write("  enter y or n (empty keeps current)\n")
+        out.flush()
+
+
+class _Closer:
+    def __init__(self, *files) -> None:
+        self._files = files
+
+    def close(self) -> None:
+        for f in self._files:
+            try:
+                f.close()
+            except OSError:
+                pass
+
+
+def _open_menu_streams():
+    """Return (inp, out, closer) for the interactive menu.
+
+    Prefer stdin/stdout when they are TTYs (works when /dev/tty is ENXIO,
+    e.g. some IDE/WSL sessions). Else try /dev/tty. closer may be None.
+    """
+    if sys.stdin.isatty() and sys.stdout.isatty():
+        return sys.stdin, sys.stdout, None
+    try:
+        tty = open("/dev/tty", "r+", encoding="utf-8", errors="replace")
+        return tty, tty, tty
+    except OSError:
+        pass
+    try:
+        tin = open("/dev/tty", "r", encoding="utf-8", errors="replace")
+        tout = open("/dev/tty", "w", encoding="utf-8", errors="replace")
+        return tin, tout, _Closer(tin, tout)
+    except OSError:
+        pass
+    return None, None, None
 
 
 def cmd_menu(path: Path, profile: str) -> int:
     """Interactive toggle for extras; saves and validates."""
     data = ensure_defaults(parse_cfg(path))
 
-    try:
-        tty = open("/dev/tty", "r+", encoding="utf-8", errors="replace")
-    except OSError:
+    inp, out, closer = _open_menu_streams()
+    if inp is None or out is None:
         print(
-            "✗ isdconfig menu needs a TTY. Use:\n"
-            "    scripts/isdconfig.py set CONFIG_PKG_NANO=y\n"
-            "    scripts/isdconfig.py set CONFIG_APPLET_TOP=y",
+            "✗ isdconfig menu needs an interactive terminal "
+            "(stdin/stdout TTY or /dev/tty).\n"
+            "  From a real shell:\n"
+            "    make isdconfig PROFILE=minimal\n"
+            "  Non-interactive:\n"
+            "    python3 scripts/isdconfig.py set CONFIG_PKG_NANO=y\n"
+            "    python3 scripts/isdconfig.py set CONFIG_APPLET_TOP=y\n"
+            "    python3 scripts/isdconfig.py show",
             file=sys.stderr,
         )
         return 1
 
-    with tty:
-        tty.write("ISD test-distro software (toggle y/n)\n")
-        tty.write(f"Config: {path}\n")
-        tty.write(f"Profile: {profile}\n")
-        tty.write("Core busybox + runit are always on.\n")
-        tty.write("Empty answer keeps the current value.\n\n")
+    try:
+        out.write("ISD test-distro software (toggle y/n)\n")
+        out.write(f"Config: {path}\n")
+        out.write(f"Profile: {profile}\n")
+        out.write("Core busybox + runit are always on.\n")
+        out.write("Empty answer keeps the current value.\n\n")
+        out.flush()
 
-        tty.write("--- packages ---\n")
+        out.write("--- packages ---\n")
         for short in EXTRAS:
             key = f"CONFIG_PKG_{short}"
             cur = data.get(key, EXTRA_DEFAULTS.get(short, "n"))
             note = ""
-            if short in FUTURE_PACKAGES:
-                note = f"  (future: packages/{FUTURE_PACKAGES[short]}/)"
+            if not recipe_ready(short):
+                note = f"  (not packaged: packages/{pkg_dirname(short)}/ — cannot enable)"
+                cur = "n"
+            elif short in FUTURE_PACKAGES:
+                note = f"  (packages/{FUTURE_PACKAGES[short]}/)"
             if short in AUTO_DEPS:
                 note += f"  [deps: {', '.join(AUTO_DEPS[short])}]"
-            tty.write(f"  {key}{note}\n")
-            data[key] = _prompt_yn(tty, f"  {short}", cur)
+            out.write(f"  {key}{note}\n")
+            out.flush()
+            if not recipe_ready(short):
+                out.write(f"  {short} [n] (skipped — not packaged)\n")
+                out.flush()
+                data[key] = "n"
+                continue
+            data[key] = _prompt_yn(inp, out, f"  {short}", cur)
+            if data[key] == "y":
+                msg = refuse_enable_pkg(short)
+                if msg:
+                    out.write(f"    ⚠ {msg}\n")
+                    out.flush()
+                    data[key] = "n"
             if data[key] == "y" and short in AUTO_DEPS:
                 for dep in AUTO_DEPS[short]:
                     data[f"CONFIG_PKG_{dep}"] = "y"
-                    tty.write(f"    → auto-enabled CONFIG_PKG_{dep}=y\n")
+                    out.write(f"    → auto-enabled CONFIG_PKG_{dep}=y\n")
+                    out.flush()
 
-        tty.write("\n--- BusyBox applets ---\n")
+        out.write("\n--- BusyBox applets ---\n")
         for short, applet in APPLETS.items():
             key = f"CONFIG_APPLET_{short}"
             cur = data.get(key, APPLET_DEFAULTS.get(short, "n"))
-            tty.write(f"  {key} → /bin/{applet}\n")
-            data[key] = _prompt_yn(tty, f"  {short}", cur)
+            out.write(f"  {key} → /bin/{applet}\n")
+            out.flush()
+            data[key] = _prompt_yn(inp, out, f"  {short}", cur)
 
-        tty.write("\n")
-        save = _prompt_yn(tty, "Save .isdconfig", "y")
+        out.write("\n")
+        out.flush()
+        save = _prompt_yn(inp, out, "Save .isdconfig", "y")
         if save != "y":
-            tty.write("  (discarded)\n")
+            out.write("  (discarded)\n")
+            out.flush()
             return 0
+    finally:
+        if closer is not None:
+            closer.close()
 
     write_cfg(path, data)
     print(f"  CONFIG    wrote {path}")
