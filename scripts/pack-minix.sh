@@ -75,6 +75,45 @@ fi
 if [ -f "${TREE}/usr/bin/nano" ]; then
 	inject_file "${TREE}/usr/bin/nano" usr/bin/nano
 fi
+# GNU make (CONFIG_PKG_GNUMAKE) — inject real ELF, then PATH-friendly hardlinks.
+if [ -f "${TREE}/usr/bin/make" ]; then
+	inject_file "${TREE}/usr/bin/make" usr/bin/make
+	$INJECT --hardlink "$DISK" usr/bin/make bin/make
+fi
+# TinyCC (CONFIG_PKG_TINYCC) — binary + runtime tree under lib/tcc + musl CRT/headers.
+if [ -f "${TREE}/usr/bin/tcc" ]; then
+	inject_file "${TREE}/usr/bin/tcc" usr/bin/tcc
+	$INJECT --hardlink "$DISK" usr/bin/tcc bin/tcc
+	$INJECT --hardlink "$DISK" usr/bin/tcc bin/cc
+	$INJECT --hardlink "$DISK" usr/bin/tcc usr/bin/cc
+fi
+inject_tree_files() {
+	local base="$1"
+	local f rel
+	[ -d "${TREE}/${base}" ] || return 0
+	while IFS= read -r f; do
+		rel="${f#${TREE}/}"
+		inject_file "$f" "$rel"
+	done < <(find "${TREE}/${base}" -type f | LC_ALL=C sort)
+}
+inject_tree_files lib/tcc
+# CRT / libc.a for guest linking (also mirrored under lib/tcc by stage-rootfs).
+if [ -f "${TREE}/usr/lib/crt1.o" ]; then
+	inject_file "${TREE}/usr/lib/crt1.o" usr/lib/crt1.o
+fi
+if [ -f "${TREE}/usr/lib/crti.o" ]; then
+	inject_file "${TREE}/usr/lib/crti.o" usr/lib/crti.o
+fi
+if [ -f "${TREE}/usr/lib/crtn.o" ]; then
+	inject_file "${TREE}/usr/lib/crtn.o" usr/lib/crtn.o
+fi
+if [ -f "${TREE}/usr/lib/libc.a" ]; then
+	inject_file "${TREE}/usr/lib/libc.a" usr/lib/libc.a
+fi
+# Guest C headers (minimal musl set from tinycc stage).
+if [ -d "${TREE}/usr/include" ] && [ -f "${TREE}/usr/bin/tcc" ]; then
+	inject_tree_files usr/include
+fi
 if [ -f "${TREE}/etc/doas.conf" ]; then
 	$INJECT "$DISK" --mode 0440 "${TREE}/etc/doas.conf" etc/doas.conf
 fi
@@ -124,6 +163,8 @@ fi
 VERIFY_EXTRA=()
 [ -f "${TREE}/usr/bin/nano" ] && VERIFY_EXTRA+=(/usr/bin/nano)
 [ -f "${TREE}/usr/bin/doas" ] && VERIFY_EXTRA+=(/usr/bin/doas)
+[ -f "${TREE}/usr/bin/make" ] && VERIFY_EXTRA+=(/usr/bin/make /bin/make)
+[ -f "${TREE}/usr/bin/tcc" ] && VERIFY_EXTRA+=(/usr/bin/tcc /bin/tcc /bin/cc /lib/tcc/libtcc1.a)
 
 # Optional Ken games (usually injected post-pack by IR0 install-ken-games)
 if [ -f "${TREE}/usr/ken/games/doom" ]; then
