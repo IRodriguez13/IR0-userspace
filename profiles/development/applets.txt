@@ -1,5 +1,5 @@
 # Development: every applet present in the built busybox-full (busybox --list).
-# Regenerated to match ir0_full.config — do not list unavailable applets.
+# Regenerated from busybox-full — do not list unavailable applets.
 ash
 awk
 base64
@@ -89,6 +89,7 @@ tar
 tee
 test
 time
+top
 touch
 tr
 true

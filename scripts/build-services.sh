@@ -48,7 +48,13 @@ build_product()
 		cc_one "$PRODUCT_STAGE" ir0_network_run ir0_network_run.c
 	fi
 	for bin in "$PRODUCT_STAGE"/*; do
-		file "$bin" | grep -q ELF
+		[ -e "$bin" ] || continue
+		# compat-links may leave smoke/package symlinks here; follow them.
+		if ! file -L "$bin" 2>/dev/null | grep -q ELF; then
+			echo "✗ not an ELF: $bin" >&2
+			file -L "$bin" >&2 || true
+			exit 1
+		fi
 	done
 	echo "✓ build services product OK ($(ls -1 "$PRODUCT_STAGE" | wc -l) binaries)"
 }
@@ -63,6 +69,8 @@ build_smoke()
 	cc_one "$SMOKE_STAGE" runit_busybox_poweroff_smoke runit_busybox_poweroff_smoke.c
 	cc_one "$SMOKE_STAGE" runit_busybox_reboot_smoke runit_busybox_reboot_smoke.c
 	cc_one "$SMOKE_STAGE" runit_hostshare_payload_run runit_hostshare_payload_run.c
+	cc_one "$SMOKE_STAGE" ash_ulimit_segv_smoke ash_ulimit_segv_smoke.c
+	cc_one "$SMOKE_STAGE" ash_direct_console_run ash_direct_console_run.c
 	exec_run()
 	{
 		# shellcheck disable=SC2086
@@ -75,6 +83,7 @@ build_smoke()
 	exec_run runit_busybox_halt_run /bin/bb-halt RUNSV_BUSYBOX_HALT_START
 	exec_run runit_busybox_poweroff_run /bin/bb-pwroff RUNSV_BUSYBOX_POWEROFF_START
 	exec_run runit_busybox_reboot_run /bin/bb-reboot RUNSV_BUSYBOX_REBOOT_START
+	exec_run runit_ash_ulimit_run /bin/aulimp ASH_ULIMIT_PROBE_SVC
 	echo "✓ build services smoke OK ($(ls -1 "$SMOKE_STAGE" | wc -l) binaries)"
 }
 

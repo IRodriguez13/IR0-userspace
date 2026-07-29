@@ -41,6 +41,12 @@ inject_file()
 
 echo "  MINIX   packing tree $TREE → $DISK"
 
+# Fresh FS every pack. Re-injecting into a guest-used image leaves
+# firstboot.done while etc/passwd is reset to locked root → FIRSTBOOT_SKIP
+# and no login (desktop also has /etc/ir0-noroot).
+echo "  MINIX   format-large (clean image, no stale firstboot markers)"
+$INJECT --format-large "$DISK"
+
 # Empty dirs first (pseudo-fs mountpoints + firstboot state). MINIX inject
 # creates parents when writing a file; use .keep placeholders.
 for d in var/lib/ir0 var/log tmp dev proc sys heart run run/doas mnt; do
@@ -197,5 +203,17 @@ python3 "${IR0_ROOT}/scripts/verify_minix_rootfs.py" --gate "$DISK" \
 	/etc/runit/1 /etc/runit/2 /etc/runit/3 \
 	/etc/runit/sv/console/run /etc/runit/sv/logger/run \
 	"${VERIFY_EXTRA[@]}"
+
+# Fresh product images must not carry guest firstboot markers (login brick).
+if python3 "${IR0_ROOT}/scripts/verify_minix_rootfs.py" "$DISK" \
+	/etc/firstboot.done >/dev/null 2>&1; then
+	echo "✗ stale /etc/firstboot.done on packed image (format-large failed?)" >&2
+	exit 1
+fi
+if python3 "${IR0_ROOT}/scripts/verify_minix_rootfs.py" "$DISK" \
+	/var/lib/ir0/firstboot.done >/dev/null 2>&1; then
+	echo "✗ stale /var/lib/ir0/firstboot.done on packed image" >&2
+	exit 1
+fi
 
 echo "  MINIX   packed $DISK"

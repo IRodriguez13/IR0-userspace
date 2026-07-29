@@ -9,7 +9,7 @@
 | Item | Notes |
 |------|-------|
 | runit PID 1 + stage 1/2/3 | `/sbin/init`, `/etc/runit/{1,2,3}` |
-| Service supervision | console + logger enabled |
+| Service supervision | console + logger enabled ([`CONSOLE.md`](CONSOLE.md): fork+wait session) |
 | busybox-full (0755) | Non-privileged general tools |
 | busybox-auth (setuid) | `login` + `su` only |
 | `ir0-passwd` (setuid) | Dedicated passwd helper |
