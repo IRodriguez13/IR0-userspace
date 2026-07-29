@@ -26,6 +26,12 @@ Sibling kernel: [`IR0`](https://github.com/IRodriguez13/IR0) — public UAPI
 
 <p align="center"><em>After login: BusyBox <code>vi</code> on the MINIX rootfs — edit guest sources under QEMU (<code>make run PROFILE=minimal</code> from IR0).</em></p>
 
+<p align="center">
+  <img src="Documentation/assets/isd-top.png" alt="ISD guest — BusyBox top under runit" width="720" />
+</p>
+
+<p align="center"><em>BusyBox <code>top</code>: runit as PID 1 with supervised services (<code>runsvdir</code>/<code>runsv</code>) and an interactive shell — product process tree on QEMU.</em></p>
+
 ## Fastest path (from IR0)
 
 ```bash
