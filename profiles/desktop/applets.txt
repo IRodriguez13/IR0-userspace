@@ -1,9 +1,10 @@
-# Desktop: every applet present in the built busybox-full (busybox --list).
-# Same coverage as development — full multicall hardlinks on the image.
+# Development: every applet in busybox-full (--list).
+# Regenerated — do not list unavailable applets.
 ash
 awk
 base64
 basename
+busybox
 cat
 chgrp
 chmod
@@ -18,16 +19,20 @@ cut
 date
 dd
 df
+diff
 dirname
 dmesg
+dos2unix
 du
 echo
 egrep
 env
+expand
 expr
 false
 fgrep
 find
+fold
 free
 grep
 groups
@@ -38,6 +43,7 @@ head
 hexdump
 hostname
 id
+ifconfig
 kill
 killall
 less
@@ -55,12 +61,17 @@ more
 mount
 mountpoint
 mv
+nc
+netstat
 nice
 nl
 nproc
+nslookup
 od
 paste
+patch
 pidof
+ping
 poweroff
 printenv
 printf
@@ -70,8 +81,10 @@ readlink
 realpath
 reboot
 reset
+rev
 rm
 rmdir
+route
 sed
 seq
 sh
@@ -81,7 +94,9 @@ sleep
 sort
 split
 stat
+strings
 stty
+switch_root
 sync
 tac
 tail
@@ -96,13 +111,17 @@ true
 tty
 umount
 uname
+unexpand
 uniq
+unix2dos
 unlink
 uptime
 usleep
 vi
 wc
+wget
 which
 whoami
 xargs
+xxd
 yes
