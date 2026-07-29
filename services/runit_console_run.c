@@ -7,7 +7,8 @@
  * See the LICENSE file in the project root for full license information.
  *
  * File: runit_console_run.c
- * Description: runit console service — Unix getty/login, privilege drop, ash.
+ * Description: runit console service — Unix getty/login; fork+wait ash session
+ *              so a shell SEGV/exit returns to the login prompt (supervisor stays up).
  */
 
 /* SPDX-License-Identifier: GPL-3.0-only */
@@ -17,9 +18,11 @@
 #include <errno.h>
 #include <fcntl.h>
 #include <grp.h>
+#include <signal.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/ioctl.h>
 #include <sys/stat.h>
 #include <sys/types.h>
 #include <sys/utsname.h>
@@ -29,6 +32,14 @@
 #include "ir0_auth.h"
 #include "ir0_profile.h"
 #include "ir0_smoke_tag.h"
+
+/* Linux uapi — musl may lack these on the ISD sysroot. */
+#ifndef TIOCSCTTY
+#define TIOCSCTTY 0x540Eu
+#endif
+#ifndef TIOCSPGRP
+#define TIOCSPGRP 0x5410u
+#endif
 
 /* Desktop profile marker: direct root login is refused before any password. */
 #define ROOT_LOGIN_DENY_FILE "/etc/ir0-noroot"
@@ -167,28 +178,13 @@ static int auth_user(const char *user, const char *password,
 	return 0;
 }
 
-static int start_session(const struct ir0_account *acct)
+static void session_setup_env(const struct ir0_account *acct)
 {
-	char *argv[3];
-	gid_t groups[IR0_AUTH_GROUPS_MAX];
-	int ngroups;
 	char host[64];
-
-	if (!acct)
-		return -1;
-
-	/* Supplementary groups (wheel and friends) must land before the drop. */
-	ngroups = ir0_group_list(acct->name, acct->gid, groups,
-				 IR0_AUTH_GROUPS_MAX);
-	if (ngroups > 0)
-		(void)setgroups((size_t)ngroups, groups);
-	if (setgid(acct->gid) != 0)
-		return -1;
-	if (setuid(acct->uid) != 0)
-		return -1;
-
-	if (chdir(acct->home) != 0)
-		(void)chdir("/");
+	char termbuf[64];
+	const char *term;
+	FILE *cf;
+	char line[128];
 
 	ir0_hostname(host, sizeof(host));
 	(void)setenv("HOME", acct->home, 1);
@@ -197,55 +193,81 @@ static int start_session(const struct ir0_account *acct)
 	(void)setenv("SHELL", acct->shell, 1);
 	(void)setenv("PATH", "/bin:/sbin:/usr/bin:/usr/sbin", 1);
 	(void)setenv("HOSTNAME", host, 1);
+
 	/*
 	 * TERM: inherited env → /etc/console.conf → documented fallback "linux".
 	 * ncurses/nano are built with linux/vt100/xterm fallbacks only.
 	 */
+	memcpy(termbuf, "linux", 6);
+	term = getenv("TERM");
+	if (!term || !term[0])
 	{
-		char termbuf[64];
-		const char *term = getenv("TERM");
-		FILE *cf;
-		char line[128];
-
-		memcpy(termbuf, "linux", 6);
-		if (!term || !term[0])
+		cf = fopen("/etc/console.conf", "r");
+		if (cf)
 		{
-			cf = fopen("/etc/console.conf", "r");
-			if (cf)
+			while (fgets(line, sizeof(line), cf))
 			{
-				while (fgets(line, sizeof(line), cf))
+				if (strncmp(line, "TERM=", 5) == 0)
 				{
-					if (strncmp(line, "TERM=", 5) == 0)
+					char *v = line + 5;
+					size_t n;
+
+					strip_ws(v);
+					n = strlen(v);
+					if (n >= sizeof(termbuf))
+						n = sizeof(termbuf) - 1;
+					if (n > 0)
 					{
-						char *v = line + 5;
-						size_t n;
-
-						strip_ws(v);
-						n = strlen(v);
-						if (n >= sizeof(termbuf))
-							n = sizeof(termbuf) - 1;
-						if (n > 0)
-						{
-							memcpy(termbuf, v, n);
-							termbuf[n] = '\0';
-						}
-						break;
+						memcpy(termbuf, v, n);
+						termbuf[n] = '\0';
 					}
+					break;
 				}
-				fclose(cf);
 			}
-			term = termbuf;
+			fclose(cf);
 		}
-		(void)setenv("TERM", term, 1);
+		term = termbuf;
 	}
+	(void)setenv("TERM", term, 1);
+}
 
-	{
-		char tag[64];
+/*
+ * Child path: new session on /dev/console, drop privileges, exec login shell.
+ * Never returns on success.
+ */
+static void session_child(const struct ir0_account *acct)
+{
+	char *argv[3];
+	gid_t groups[IR0_AUTH_GROUPS_MAX];
+	int ngroups;
+	pid_t pg;
+	char tag[64];
 
-		snprintf(tag, sizeof(tag), "LOGIN_UID=%u EUID=%u\n",
-			 (unsigned)getuid(), (unsigned)geteuid());
-		ir0_smoke_tag(tag);
-	}
+	/* New session; console becomes controlling TTY (Linux getty model). */
+	if (setsid() < 0)
+		_exit(111);
+	(void)ioctl(0, TIOCSCTTY, 0);
+	pg = getpid();
+	(void)setpgid(0, 0);
+	(void)ioctl(0, TIOCSPGRP, &pg);
+
+	ngroups = ir0_group_list(acct->name, acct->gid, groups,
+				 IR0_AUTH_GROUPS_MAX);
+	if (ngroups > 0)
+		(void)setgroups((size_t)ngroups, groups);
+	if (setgid(acct->gid) != 0)
+		_exit(111);
+	if (setuid(acct->uid) != 0)
+		_exit(111);
+
+	if (chdir(acct->home) != 0)
+		(void)chdir("/");
+
+	session_setup_env(acct);
+
+	snprintf(tag, sizeof(tag), "LOGIN_UID=%u EUID=%u\n",
+		 (unsigned)getuid(), (unsigned)geteuid());
+	ir0_smoke_tag(tag);
 
 	/*
 	 * Password entry may leave ECHO off if restore failed. Ash then looks
@@ -262,7 +284,56 @@ static int start_session(const struct ir0_account *acct)
 	argv[2] = NULL;
 	execv(acct->shell[0] ? acct->shell : "/bin/sh", argv);
 	execv("/bin/sh", argv);
-	return -1;
+	_exit(127);
+}
+
+/*
+ * Fork the interactive shell and wait. Returns 0 after the session ends
+ * (exit or signal) so the caller can re-prompt; -1 only if fork fails.
+ * The console supervisor process stays alive across shell SEGV/exit.
+ */
+static int start_session(const struct ir0_account *acct)
+{
+	pid_t pid;
+	int status = 0;
+
+	if (!acct)
+		return -1;
+
+	ir0_smoke_tag("CONSOLE_SESSION_START\n");
+	(void)ir0_tty_restore_cooked();
+
+	pid = fork();
+	if (pid < 0)
+	{
+		ir0_smoke_tag("RUNSV_CONSOLE_FORK_FAIL\n");
+		return -1;
+	}
+	if (pid == 0)
+		session_child(acct);
+
+	if (waitpid(pid, &status, 0) < 0)
+	{
+		ir0_smoke_tag("CONSOLE_SESSION_WAIT_FAIL\n");
+		(void)ir0_tty_restore_cooked();
+		return 0;
+	}
+
+	if (WIFSIGNALED(status) && WTERMSIG(status) == SIGSEGV)
+		ir0_smoke_tag("CONSOLE_SESSION_SEGV\n");
+	else if (WIFSIGNALED(status))
+		ir0_smoke_tag("CONSOLE_SESSION_SIGNAL\n");
+	else
+		ir0_smoke_tag("CONSOLE_SESSION_END\n");
+
+	/*
+	 * Shell may have left raw/noecho or a drained canon queue. Restore
+	 * before the next username prompt.
+	 */
+	(void)ir0_tty_restore_cooked();
+	(void)ir0_tty_flush_input();
+	ir0_smoke_tag("CONSOLE_SESSION_REPROMPT\n");
+	return 0;
 }
 
 static void print_issue(void)
@@ -422,10 +493,14 @@ int main(void)
 			if (start_session(&acct) != 0)
 			{
 				ir0_smoke_tag("RUNSV_CONSOLE_EXEC_FAIL\n");
-				return 111;
+				/* Fall through to interactive login. */
 			}
+			/* Session ended (exit/SEGV): re-prompt below. */
 		}
-		ir0_smoke_tag("LOGIN_AUTO_FAIL\n");
+		else
+		{
+			ir0_smoke_tag("LOGIN_AUTO_FAIL\n");
+		}
 	}
 
 	snprintf(prompt, sizeof(prompt), "Enter your Unix username: ");
@@ -466,7 +541,9 @@ int main(void)
 		if (start_session(&acct) != 0)
 		{
 			ir0_smoke_tag("RUNSV_CONSOLE_EXEC_FAIL\n");
-			return 111;
+			sleep(1);
+			continue;
 		}
+		/* Shell exited or was killed — loop back to username prompt. */
 	}
 }

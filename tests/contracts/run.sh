@@ -89,6 +89,10 @@ grep -q '\[ "\$ap" = "busybox" \] && return 0' scripts/stage-rootfs.sh \
 	&& ok "C skip busybox self-link" || bad "C no busybox skip"
 grep -q 'CONFIG_APPLET_' scripts/stage-rootfs.sh \
 	&& ok "C stage links CONFIG_APPLET_*" || bad "C no applet config links"
+grep -q 'format-large' scripts/pack-minix.sh \
+	&& ok "C pack-minix format-large clean image" || bad "C pack-minix no format-large"
+grep -q 'firstboot.done' scripts/pack-minix.sh \
+	&& ok "C pack rejects stale firstboot.done" || bad "C pack no firstboot.done guard"
 
 # --- D: DOOM scrub + tinycc/gnumake ready + clean policy --------------------
 echo "-- D packages / scrub / clean --"
