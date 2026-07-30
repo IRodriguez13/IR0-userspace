@@ -89,9 +89,11 @@ static int ir0_tty_set_echo(int enable)
 
 int ir0_tty_flush_input(void)
 {
-	int arg = 0; /* TCIFLUSH */
-
-	return syscall(SYS_ioctl, 0, IR0_TCFLSH, &arg) == 0 ? 0 : -1;
+	/*
+	 * Linux ioctl(TCFLSH) takes the queue id as the third argument value
+	 * (TCIFLUSH=0), not a userspace pointer.
+	 */
+	return syscall(SYS_ioctl, 0, IR0_TCFLSH, 0) == 0 ? 0 : -1;
 }
 
 /* Public: restore cooked+echo and drop pending keystrokes (login prompts). */

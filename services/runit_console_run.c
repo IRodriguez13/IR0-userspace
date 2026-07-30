@@ -509,8 +509,10 @@ int main(void)
 	{
 		/* Drop keys typed during the prior delay / password silence. */
 		(void)ir0_tty_restore_cooked();
+		(void)ir0_tty_flush_input();
 		print_issue();
 		puts_fd(prompt);
+		(void)ir0_tty_flush_input();
 		(void)ir0_read_line(user, sizeof(user), 1);
 		strip_ws(user);
 		ir0_smoke_tag("LOGIN_USER_READ\n");
