@@ -13,6 +13,12 @@ PKG="${ROOT}/packages/${NAME}"
 
 [ -d "$PKG" ] || { echo "✗ unknown package: $NAME" >&2; exit 1; }
 
+# Optional custom fetch (e.g. packages/doom from IR0_ROOT — no tarball).
+if [ -x "$PKG/fetch.sh" ] || [ -f "$PKG/fetch.sh" ]; then
+	chmod +x "$PKG/fetch.sh"
+	exec bash "$PKG/fetch.sh"
+fi
+
 URL="$(cat "$PKG/url")"
 SRCROOT="$(cat "$PKG/srcroot")"
 TARBALL="$(basename "$URL")"

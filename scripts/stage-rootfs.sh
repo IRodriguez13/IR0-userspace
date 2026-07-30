@@ -219,6 +219,19 @@ if manifest_has tinycc; then
 		cp -a "${TCC_RT}/usr/include/." "${DEST}/usr/include/"
 	fi
 fi
+if manifest_has doom; then
+	if [ -x "${STAGE_BIN}/doom" ]; then
+		install -m 0755 "${STAGE_BIN}/doom" "${DEST}/usr/ken/games/doom"
+		ln -sf ../ken/games/doom "${DEST}/usr/bin/doom"
+		ln -sf ../usr/ken/games/doom "${DEST}/bin/doom"
+		ln -sf ../usr/ken/games/doom "${DEST}/bin/doomgeneric"
+	fi
+	DOOM_RT="${PRODUCT_OUT}/doom-runtime"
+	if [ -f "${DOOM_RT}/doom1.wad" ]; then
+		install -m 0644 "${DOOM_RT}/doom1.wad" "${DEST}/usr/share/doom/doom1.wad"
+		install -m 0644 "${DOOM_RT}/doom1.wad" "${DEST}/usr/ken/games/doom1.wad"
+	fi
+fi
 
 # Account policy by profile
 case "$PROFILE" in
