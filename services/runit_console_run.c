@@ -7,8 +7,9 @@
  * See the LICENSE file in the project root for full license information.
  *
  * File: runit_console_run.c
- * Description: runit console service — Unix getty/login; fork+wait ash session
- *              so a shell SEGV/exit returns to the login prompt (supervisor stays up).
+ * Description: runit console service — Unix getty/login; fork+wait ash session.
+ *              Shell SEGV / abnormal exit restarts the same user session without
+ *              re-login; clean exit (exit 0 / Ctrl-D) returns to the login prompt.
  */
 
 /* SPDX-License-Identifier: GPL-3.0-only */
@@ -30,6 +31,7 @@
 #include <unistd.h>
 
 #include "ir0_auth.h"
+#include "ir0_keymap.h"
 #include "ir0_profile.h"
 #include "ir0_smoke_tag.h"
 
@@ -288,14 +290,18 @@ static void session_child(const struct ir0_account *acct)
 }
 
 /*
- * Fork the interactive shell and wait. Returns 0 after the session ends
- * (exit or signal) so the caller can re-prompt; -1 only if fork fails.
+ * Fork the interactive shell and wait.
+ * Returns:
+ *   1  — voluntary logout (exit 0): caller should show the login prompt
+ *   0  — crash / signal / non-zero exit: caller should respawn same user
+ *  -1  — fork failed
  * The console supervisor process stays alive across shell SEGV/exit.
  */
 static int start_session(const struct ir0_account *acct)
 {
 	pid_t pid;
 	int status = 0;
+	int logout = 0;
 
 	if (!acct)
 		return -1;
@@ -316,24 +322,57 @@ static int start_session(const struct ir0_account *acct)
 	{
 		ir0_smoke_tag("CONSOLE_SESSION_WAIT_FAIL\n");
 		(void)ir0_tty_restore_cooked();
+		(void)ir0_tty_flush_input();
+		/* Treat as crash — keep the authenticated user. */
+		ir0_smoke_tag("CONSOLE_SESSION_RESUME\n");
 		return 0;
 	}
 
 	if (WIFSIGNALED(status) && WTERMSIG(status) == SIGSEGV)
+	{
 		ir0_smoke_tag("CONSOLE_SESSION_SEGV\n");
+		puts_fd("\n[console] shell crashed (SIGSEGV); restarting session...\n");
+	}
 	else if (WIFSIGNALED(status))
+	{
 		ir0_smoke_tag("CONSOLE_SESSION_SIGNAL\n");
-	else
+		puts_fd("\n[console] shell killed; restarting session...\n");
+	}
+	else if (WIFEXITED(status) && WEXITSTATUS(status) == 0)
+	{
 		ir0_smoke_tag("CONSOLE_SESSION_END\n");
+		logout = 1;
+	}
+	else
+	{
+		ir0_smoke_tag("CONSOLE_SESSION_END\n");
+		puts_fd("\n[console] shell exited abnormally; restarting session...\n");
+	}
 
-	/*
-	 * Shell may have left raw/noecho or a drained canon queue. Restore
-	 * before the next username prompt.
-	 */
 	(void)ir0_tty_restore_cooked();
 	(void)ir0_tty_flush_input();
-	ir0_smoke_tag("CONSOLE_SESSION_REPROMPT\n");
+	if (logout)
+	{
+		ir0_smoke_tag("CONSOLE_SESSION_REPROMPT\n");
+		return 1;
+	}
+	ir0_smoke_tag("CONSOLE_SESSION_RESUME\n");
 	return 0;
+}
+
+/* Keep spawning shells for @acct until voluntary logout or fork failure. */
+static int run_user_sessions(const struct ir0_account *acct)
+{
+	for (;;)
+	{
+		int r = start_session(acct);
+
+		if (r < 0)
+			return -1;
+		if (r > 0)
+			return 0; /* logged out */
+		/* r == 0: same user, new shell */
+	}
 }
 
 static void print_issue(void)
@@ -463,6 +502,9 @@ int main(void)
 	attach_console();
 	ir0_smoke_tag("GETTY_READY\n");
 
+	/* Persist layout from /etc/keymap when present (kernel default otherwise). */
+	(void)ir0_keymap_apply_file(IR0_KEYMAP_FILE);
+
 	profile = ir0_read_profile();
 	if (profile == PROFILE_APPLIANCE)
 	{
@@ -473,6 +515,8 @@ int main(void)
 	}
 
 	run_firstboot_if_pending();
+	/* Firstboot may have written /etc/keymap — re-apply before login. */
+	(void)ir0_keymap_apply_file(IR0_KEYMAP_FILE);
 	(void)ir0_tty_restore_cooked();
 
 	auto_f = fopen("/etc/ir0-autologin", "r");
@@ -490,12 +534,9 @@ int main(void)
 			audit("login granted", user);
 			print_welcome(profile);
 			ir0_smoke_tag("ASH_INTERACTIVE_READY\n");
-			if (start_session(&acct) != 0)
-			{
+			if (run_user_sessions(&acct) != 0)
 				ir0_smoke_tag("RUNSV_CONSOLE_EXEC_FAIL\n");
-				/* Fall through to interactive login. */
-			}
-			/* Session ended (exit/SEGV): re-prompt below. */
+			/* Logged out (or fork fail) — interactive login below. */
 		}
 		else
 		{
@@ -540,12 +581,12 @@ int main(void)
 		audit("login granted", user);
 		print_welcome(profile);
 		ir0_smoke_tag("ASH_INTERACTIVE_READY\n");
-		if (start_session(&acct) != 0)
+		if (run_user_sessions(&acct) != 0)
 		{
 			ir0_smoke_tag("RUNSV_CONSOLE_EXEC_FAIL\n");
 			sleep(1);
 			continue;
 		}
-		/* Shell exited or was killed — loop back to username prompt. */
+		/* Voluntary logout — loop back to username prompt. */
 	}
 }

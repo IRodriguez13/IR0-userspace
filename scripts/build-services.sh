@@ -11,6 +11,7 @@ SVC="${ROOT}/services"
 LIB="${ROOT}/lib"
 SYSROOT="${IR0_UAPI_SYSROOT:-${ROOT}/sysroot}"
 AUTH_LIB="${LIB}/ir0_auth.c"
+KEYMAP_LIB="${LIB}/ir0_keymap.c"
 CFLAGS="-static -Os -I${LIB}"
 [ -d "${SYSROOT}/usr/include" ] && CFLAGS="$CFLAGS -isystem ${SYSROOT}/usr/include"
 
@@ -31,13 +32,14 @@ build_product()
 	cc_one "$PRODUCT_STAGE" runit_stage1 runit_stage1.c
 	cc_one "$PRODUCT_STAGE" runit_stage2 runit_stage2.c
 	cc_one "$PRODUCT_STAGE" runit_stage3 runit_stage3.c
-	cc_one "$PRODUCT_STAGE" runit_console_run runit_console_run.c "$AUTH_LIB"
+	cc_one "$PRODUCT_STAGE" runit_console_run runit_console_run.c "$AUTH_LIB" "$KEYMAP_LIB"
 	cc_one "$PRODUCT_STAGE" runit_logger_run runit_logger_run.c
 	cc_one "$PRODUCT_STAGE" fsck.ir0 fsck.ir0.c
-	cc_one "$PRODUCT_STAGE" ir0_firstboot ir0_firstboot.c "$AUTH_LIB"
+	cc_one "$PRODUCT_STAGE" ir0_firstboot ir0_firstboot.c "$AUTH_LIB" "$KEYMAP_LIB"
 	cc_one "$PRODUCT_STAGE" ir0_passwd ir0_passwd.c "$AUTH_LIB"
 	cc_one "$PRODUCT_STAGE" ir0_adduser ir0_adduser.c "$AUTH_LIB"
 	cc_one "$PRODUCT_STAGE" ir0_status ir0_status.c
+	cc_one "$PRODUCT_STAGE" ir0_keymap ir0_keymap.c "$KEYMAP_LIB"
 	cc_one "$PRODUCT_STAGE" ir0_recovery ir0_recovery.c
 	cc_one "$PRODUCT_STAGE" mount_root_rw mount_root_rw.c
 	cc_one "$PRODUCT_STAGE" runit_pause_run runit_pause_run.c

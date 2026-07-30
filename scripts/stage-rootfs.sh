@@ -116,6 +116,10 @@ install -m 0755 "$STAGE_BIN/ir0_firstboot" "${DEST}/sbin/ir0-firstboot"
 install -m 0755 "$STAGE_BIN/ir0_recovery" "${DEST}/sbin/ir0-recovery"
 install -m 0755 "$STAGE_BIN/mount_root_rw" "${DEST}/sbin/mount-root-rw"
 install -m 0755 "$STAGE_BIN/ir0_status" "${DEST}/bin/ir0-status"
+if [ -x "$STAGE_BIN/ir0_keymap" ]; then
+	install -m 0755 "$STAGE_BIN/ir0_keymap" "${DEST}/usr/bin/keymap"
+	ln -sf ../usr/bin/keymap "${DEST}/bin/keymap"
+fi
 if [ -f "$STAGE_BIN/ir0_force_power" ]; then
 	install -m 0755 "$STAGE_BIN/ir0_force_power" "${DEST}/bin/poweroff"
 	ln -f "${DEST}/bin/poweroff" "${DEST}/bin/halt"
