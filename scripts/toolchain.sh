@@ -144,7 +144,7 @@ toolchain_pkg_status()
 		busybox|runit)
 			echo "buildable"
 			;;
-		opendoas|ncurses|nano)
+		opendoas|ncurses|nano|tinycc|gnumake|doom)
 			echo "blocked-by-package"
 			;;
 		*)

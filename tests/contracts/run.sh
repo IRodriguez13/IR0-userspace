@@ -59,7 +59,15 @@ min=$(PROFILE=minimal ISD_CONFIG="$CFG_EMPTY" bash scripts/resolve-packages.sh)
 echo " $min " | grep -q ' busybox ' && echo " $min " | grep -q ' runit ' \
 	&& ! echo " $min " | grep -q ' opendoas ' \
 	&& ! echo " $min " | grep -q ' gnumake ' \
+	&& ! echo " $min " | grep -q ' tinycc ' \
 	&& ok "B minimal packages.txt core-only" || bad "B minimal resolve: $min"
+
+desk=$(PROFILE=desktop ISD_CONFIG="$CFG_EMPTY" bash scripts/resolve-packages.sh)
+echo " $desk " | grep -q ' tinycc ' && echo " $desk " | grep -q ' gnumake ' \
+	&& echo " $desk " | grep -q ' doom ' \
+	&& echo " $desk " | grep -q ' nano ' && echo " $desk " | grep -q ' opendoas ' \
+	&& ok "B desktop packages.txt mandates tinycc+gnumake+doom+editor" \
+	|| bad "B desktop resolve: $desk"
 
 CFG3="$TMP/isdconfig-b3"
 PROFILE=minimal ISD_CONFIG="$CFG3" python3 scripts/isdconfig.py --config "$CFG3" defconfig --force
@@ -94,21 +102,23 @@ grep -q 'format-large' scripts/pack-minix.sh \
 grep -q 'firstboot.done' scripts/pack-minix.sh \
 	&& ok "C pack rejects stale firstboot.done" || bad "C pack no firstboot.done guard"
 
-# --- D: DOOM scrub + tinycc/gnumake ready + clean policy --------------------
+# --- D: DOOM IWAD gate + tinycc/gnumake/doom ready + clean policy -----------
 echo "-- D packages / scrub / clean --"
 CFGD="$TMP/isdconfig-d"
 PROFILE=minimal ISD_CONFIG="$CFGD" python3 scripts/isdconfig.py --config "$CFGD" defconfig --force
 sed -i 's/CONFIG_PKG_DOOM=n/CONFIG_PKG_DOOM=y/' "$CFGD"
 set +e
-out=$(PROFILE=minimal ISD_CONFIG="$CFGD" python3 scripts/isdconfig.py --config "$CFGD" validate 2>&1)
+out=$(env -u ISD_DOOM_IWAD PROFILE=minimal ISD_CONFIG="$CFGD" \
+	python3 scripts/isdconfig.py --config "$CFGD" validate 2>&1)
 rc=$?
 set -e
 [ "$rc" -eq 0 ] && grep -q 'CONFIG_PKG_DOOM=n' "$CFGD" \
-	&& ok "D DOOM scrubbed to n" || bad "D DOOM: rc=$rc out=$out"
+	&& ok "D DOOM scrubbed to n without IWAD" || bad "D DOOM: rc=$rc out=$out"
 echo "$out" | grep -qi 'DOOM\|IWAD\|doom' && ok "D DOOM message" || ok "D DOOM scrub silent ok"
 
 [ -f packages/tinycc/build.sh ] && ok "D packages/tinycc present" || bad "D no tinycc recipe"
 [ -f packages/gnumake/build.sh ] && ok "D packages/gnumake present" || bad "D no gnumake recipe"
+[ -f packages/doom/build.sh ] && ok "D packages/doom present" || bad "D no doom recipe"
 
 CFGT="$TMP/isdconfig-t"
 PROFILE=minimal ISD_CONFIG="$CFGT" python3 scripts/isdconfig.py --config "$CFGT" defconfig --force

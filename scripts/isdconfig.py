@@ -28,10 +28,9 @@ APPLETS: dict[str, str] = {
     "TOP": "top",
 }
 
-# Not yet packaged — menu/set refuse =y until packages/<dir>/build.sh exists.
-FUTURE_PACKAGES = {
-    "DOOM": "doom",
-}
+# Reserved for extras that need a non-lowercase package dir name.
+# DOOM → packages/doom/ (packaged); keep map empty unless a rename is needed.
+FUTURE_PACKAGES: dict[str, str] = {}
 
 # If KEY=y, ensure each dep is y (or reject).
 AUTO_DEPS = {
@@ -41,6 +40,7 @@ AUTO_DEPS = {
 CORE_DEFAULTS = {k: "y" for k in FORBIDDEN_DISABLE}
 
 # Sensible test-distro defaults: common extras on; futures off.
+# TINYCC/GNUMAKE stay optional here — desktop mandates them via packages.txt.
 EXTRA_DEFAULTS = {
     "NANO": "y",
     "NCURSES": "y",

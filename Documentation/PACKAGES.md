@@ -68,16 +68,33 @@ Keep empty overlay dirs with `.keep` so the tree exists in git.
 | `CONFIG_PKG_OPENDOAS` | `packages/opendoas/` | `/usr/bin/doas` |
 | `CONFIG_PKG_GNUMAKE` | `packages/gnumake/` | `/usr/bin/make`, `/bin/make` |
 | `CONFIG_PKG_TINYCC` | `packages/tinycc/` | `/usr/bin/tcc`, `/lib/tcc/`, musl CRT/headers |
+| `CONFIG_PKG_DOOM` | `packages/doom/` | `/usr/ken/games/doom`, `/usr/share/doom/doom1.wad` |
 
 `make fetch` downloads into `packages/<name>/dist` and unpacks to
 `packages/<name>/src` only when missing (safe to re-run offline).
+`packages/doom/` uses a custom `fetch.sh` (sources from `IR0_ROOT/setup/doom`).
 
 `make clean` removes **`out/` only** (stamps + staged binaries). It never
 deletes `packages/*/src` or `packages/*/dist`. `make distclean` also drops
 unpacked `src/` but keeps downloaded tarballs in `dist/`.
 
-## Future extras
+## Doom IWAD
 
-`CONFIG_PKG_DOOM` stays off until `packages/doom/` exists. Enabling it in
-`.isdconfig` is scrubbed to `n` on validate (with a warning). Doom will also
-require `ISD_DOOM_IWAD` pointing at a real IWAD file once packaged.
+Desktop lists `doom` in `packages.txt`. Building the binary needs a real IWAD:
+
+```bash
+export ISD_DOOM_IWAD=/path/to/doom1.wad   # or DOOM.WAD
+make build PROFILE=desktop
+```
+
+If no IWAD is set (and none under `rootfs/local/usr/share/doom/`):
+
+- **TTY:** asks whether to continue the ISD build **without** compiling Doom.
+- **Non-interactive:** skips Doom (exit 0) unless `ISD_DOOM_REQUIRE=1` (hard fail)
+  or `ISD_DOOM_SKIP=1` (skip, no prompt).
+- Rootfs simply omits `/usr/ken/games/doom` until you set `ISD_DOOM_IWAD` and
+  rebuild (`rm out/<arch>/stamps/packages/doom && make build-doom`).
+
+`CONFIG_PKG_DOOM=y` in `.isdconfig` is still scrubbed to `n` on validate when
+`ISD_DOOM_IWAD` is unset (optional toggle path); the profile package list is
+independent and uses the skip/prompt path above.

@@ -1,2 +1,10 @@
 busybox
 runit
+# Mandatory desktop toolchain + editor stack (also seedable via .isdconfig).
+opendoas
+nano
+ncurses
+tinycc
+gnumake
+# Doomgeneric (IR0 fb/evdev port) + IWAD staged via ISD_DOOM_IWAD.
+doom
