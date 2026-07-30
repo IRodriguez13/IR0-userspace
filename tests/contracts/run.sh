@@ -119,6 +119,12 @@ echo "$out" | grep -qi 'DOOM\|IWAD\|doom' && ok "D DOOM message" || ok "D DOOM s
 [ -f packages/tinycc/build.sh ] && ok "D packages/tinycc present" || bad "D no tinycc recipe"
 [ -f packages/gnumake/build.sh ] && ok "D packages/gnumake present" || bad "D no gnumake recipe"
 [ -f packages/doom/build.sh ] && ok "D packages/doom present" || bad "D no doom recipe"
+[ -f lib/ir0_keymap.c ] && [ -f services/ir0_keymap.c ] \
+	&& ok "D keymap lib+CLI present" || bad "D missing keymap sources"
+grep -q 'ir0_keymap_apply_file' services/runit_console_run.c \
+	&& ok "D console applies /etc/keymap" || bad "D console missing keymap apply"
+grep -q 'usr/bin/keymap' scripts/stage-rootfs.sh \
+	&& ok "D stage installs keymap" || bad "D stage missing keymap"
 
 CFGT="$TMP/isdconfig-t"
 PROFILE=minimal ISD_CONFIG="$CFGT" python3 scripts/isdconfig.py --config "$CFGT" defconfig --force

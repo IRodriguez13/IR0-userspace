@@ -70,6 +70,20 @@ Keep empty overlay dirs with `.keep` so the tree exists in git.
 | `CONFIG_PKG_TINYCC` | `packages/tinycc/` | `/usr/bin/tcc`, `/lib/tcc/`, musl CRT/headers |
 | `CONFIG_PKG_DOOM` | `packages/doom/` | `/usr/ken/games/doom`, `/usr/share/doom/doom1.wad` |
 
+## Keyboard layout (US + LATAM)
+
+Both PS/2 ASCII maps live in the IR0 kernel. ISD ships `/usr/bin/keymap` (not
+BusyBox `loadkmap` — that needs Linux `KDSKBENT`, which IR0 does not implement):
+
+```bash
+keymap           # print current: us | latam
+keymap latam     # set + persist /etc/keymap
+keymap us
+```
+
+The console service applies `/etc/keymap` at start. Firstboot wizard asks
+`us|latam` (default `us`). Do **not** enable BusyBox `CONFIG_LOADKMAP` for this.
+
 `make fetch` downloads into `packages/<name>/dist` and unpacks to
 `packages/<name>/src` only when missing (safe to re-run offline).
 `packages/doom/` uses a custom `fetch.sh` (sources from `IR0_ROOT/setup/doom`).

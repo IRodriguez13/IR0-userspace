@@ -71,6 +71,13 @@ if [ -f "${TREE}/usr/sbin/adduser" ]; then
 	$INJECT --hardlink "$DISK" usr/sbin/adduser sbin/adduser
 fi
 inject_file "${TREE}/bin/ir0-status" bin/ir0-status
+if [ -f "${TREE}/usr/bin/keymap" ]; then
+	inject_file "${TREE}/usr/bin/keymap" usr/bin/keymap
+	inject_file "${TREE}/usr/bin/keymap" bin/keymap
+fi
+if [ -f "${TREE}/etc/keymap" ]; then
+	inject_file "${TREE}/etc/keymap" etc/keymap
+fi
 inject_file "${TREE}/usr/bin/busybox-auth" usr/bin/busybox-auth
 $INJECT --hardlink "$DISK" usr/bin/busybox-auth bin/login
 $INJECT --hardlink "$DISK" usr/bin/busybox-auth bin/su

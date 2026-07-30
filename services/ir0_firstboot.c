@@ -24,6 +24,7 @@
 #include <unistd.h>
 
 #include "ir0_auth.h"
+#include "ir0_keymap.h"
 #include "ir0_profile.h"
 #include "ir0_smoke_tag.h"
 
@@ -354,6 +355,29 @@ static int wizard_interactive(void)
 	fflush(stdout);
 	if (ir0_read_line(host, sizeof(host), 1) != 0 || host[0] == '\0')
 		snprintf(host, sizeof(host), "ir0");
+
+	{
+		char layout_line[32];
+		int layout = IR0_KBD_LAYOUT_US;
+
+		printf("Keyboard layout [us] (us|latam): ");
+		fflush(stdout);
+		if (ir0_read_line(layout_line, sizeof(layout_line), 1) == 0 &&
+		    layout_line[0] != '\0')
+		{
+			int parsed = ir0_keymap_parse(layout_line);
+
+			if (parsed >= 0)
+				layout = parsed;
+			else
+				puts("Unknown layout; using us.");
+		}
+		if (ir0_keymap_write_file(IR0_KEYMAP_FILE, layout) != 0)
+			fprintf(stderr, "firstboot: warning: cannot write %s\n",
+				IR0_KEYMAP_FILE);
+		else
+			(void)ir0_keymap_set(layout);
+	}
 
 	for (;;)
 	{
