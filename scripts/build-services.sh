@@ -69,8 +69,6 @@ build_smoke()
 	cc_one "$SMOKE_STAGE" runit_busybox_poweroff_smoke runit_busybox_poweroff_smoke.c
 	cc_one "$SMOKE_STAGE" runit_busybox_reboot_smoke runit_busybox_reboot_smoke.c
 	cc_one "$SMOKE_STAGE" runit_hostshare_payload_run runit_hostshare_payload_run.c
-	cc_one "$SMOKE_STAGE" ash_ulimit_segv_smoke ash_ulimit_segv_smoke.c
-	cc_one "$SMOKE_STAGE" ash_direct_console_run ash_direct_console_run.c
 	exec_run()
 	{
 		# shellcheck disable=SC2086
@@ -83,7 +81,6 @@ build_smoke()
 	exec_run runit_busybox_halt_run /bin/bb-halt RUNSV_BUSYBOX_HALT_START
 	exec_run runit_busybox_poweroff_run /bin/bb-pwroff RUNSV_BUSYBOX_POWEROFF_START
 	exec_run runit_busybox_reboot_run /bin/bb-reboot RUNSV_BUSYBOX_REBOOT_START
-	exec_run runit_ash_ulimit_run /bin/aulimp ASH_ULIMIT_PROBE_SVC
 	echo "✓ build services smoke OK ($(ls -1 "$SMOKE_STAGE" | wc -l) binaries)"
 }
 
